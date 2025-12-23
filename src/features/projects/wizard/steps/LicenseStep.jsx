@@ -1,0 +1,657 @@
+import { useMemo, useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { api } from "../../../../services/api";
+import { useAuth } from "../../../../contexts/AuthContext";
+import Dialog from "../../../../components/common/Dialog";
+import Field from "../../../../components/forms/Field";
+import ViewRow from "../../../../components/forms/ViewRow";
+import PersonField from "../components/PersonField";
+import ReadOnlyField from "../../../../components/forms/ReadOnlyField";
+import YesNoChips from "../../../../components/ui/YesNoChips";
+import WizardShell from "../components/WizardShell";
+import StepActions from "../components/StepActions";
+import RtlSelect from "../../../../components/forms/RtlSelect";
+import InfoTip from "../components/InfoTip";
+import Button from "../../../../components/common/Button";
+import FileAttachmentView from "../../../../components/file-upload/FileAttachmentView";
+import FileUpload from "../../../../components/file-upload/FileUpload";
+import DateInput from "../../../../components/fields/DateInput";
+import useLicense, { normalizeOwner } from "../../../../hooks/useLicense";
+import { toIsoDate, formatProjectNumber, formatDate } from "../../../../utils/formatters";
+import { formatLicenseServerErrors } from "../../../../utils/errors/licenseErrorFormatter";
+import { getErrorMessage } from "../../../../utils/errorHandler";
+import { toLocalizedUse, isRO } from "../../../../utils/licenseHelpers";
+import { saveToList } from "../../../../utils/localStorage";
+import { extractFileNameFromUrl } from "../../../../utils/fileHelpers";
+import { getStandardFileName, renameFileForUpload } from "../../../../utils/fileNaming";
+
+export default function LicenseStep({ projectId, onPrev, onNext, isView: isViewProp }) {
+  const { t, i18n } = useTranslation();
+  const isAR = /^ar\b/i.test(i18n.language || "");
+  const { user } = useAuth();
+  const { form, setF, owners, setOwners, existingId, setExistingId, isView: isViewState, setIsView } = useLicense(projectId, i18n);
+  
+  // ✅ تحميل بيانات المقاول من TenantSettings تلقائياً (أولوية عالية)
+  useEffect(() => {
+    if (!projectId || !user?.tenant) return;
+    
+    (async () => {
+      try {
+        const { data } = await api.get('auth/tenant-settings/current/');
+        console.log('✅ TenantSettings data loaded:', data);
+        if (data) {
+          // ✅ ملء بيانات المقاول من TenantSettings دائماً (Single Source of Truth)
+          // نستخدم البيانات من TenantSettings حتى لو كانت موجودة في الـ API
+          const updates = {};
+          if (data.contractor_name) {
+            updates.contractor_name = data.contractor_name;
+          }
+          if (data.contractor_name_en) {
+            updates.contractor_name_en = data.contractor_name_en;
+          }
+          if (data.contractor_license_no) {
+            updates.contractor_license_no = data.contractor_license_no;
+          }
+          if (data.contractor_phone) {
+            updates.contractor_phone = data.contractor_phone;
+          }
+          if (data.contractor_email) {
+            updates.contractor_email = data.contractor_email;
+          }
+          
+          if (Object.keys(updates).length > 0) {
+            console.log('✅ Updating contractor data from TenantSettings:', updates);
+            Object.entries(updates).forEach(([key, value]) => {
+              setF(key, value);
+            });
+          } else {
+            console.warn('⚠️ No contractor data found in TenantSettings');
+          }
+        }
+      } catch (e) {
+        console.error('❌ Error loading contractor data from tenant settings:', e);
+      }
+    })();
+  }, [projectId, user?.tenant]);
+  
+  // ✅ إعادة تحميل بيانات المقاول من TenantSettings بعد تحميل البيانات من الـ API
+  useEffect(() => {
+    if (!projectId || !user?.tenant || !existingId) return;
+    
+    (async () => {
+      try {
+        const { data } = await api.get('auth/tenant-settings/current/');
+        if (data) {
+          // ✅ تحديث بيانات المقاول من TenantSettings بعد تحميل الرخصة
+          if (data.contractor_name) {
+            setF("contractor_name", data.contractor_name);
+          }
+          if (data.contractor_name_en) {
+            setF("contractor_name_en", data.contractor_name_en);
+          }
+          if (data.contractor_license_no) {
+            setF("contractor_license_no", data.contractor_license_no);
+          }
+          if (data.contractor_phone) {
+            setF("contractor_phone", data.contractor_phone);
+          }
+          if (data.contractor_email) {
+            setF("contractor_email", data.contractor_email);
+          }
+        }
+      } catch (e) {
+        console.error('Error reloading contractor data from tenant settings:', e);
+      }
+    })();
+  }, [projectId, user?.tenant, existingId]);
+
+  // ✅ توحيد السلوك: إذا كان isViewProp محدد من الخارج (من WizardPage)، نستخدمه مباشرة
+  // الوضع الافتراضي هو التعديل (false) وليس الفيو
+  const [viewMode, setViewMode] = useState(() => {
+    // إذا كان isViewProp محدد صراحة (true أو false)، نستخدمه
+    if (isViewProp !== undefined) return isViewProp === true;
+    // إذا لم يكن محدد، نستخدم isViewState من الـ hook
+    return isViewState === true;
+  });
+  const hasNextStep = typeof onNext === "function";
+  
+  // ✅ مزامنة مع isViewProp من الخارج
+  useEffect(() => {
+    if (isViewProp !== undefined) {
+      setViewMode(isViewProp === true);
+    } else {
+      // إذا لم يكن محدد من الخارج، نستخدم isViewState من الـ hook
+      setViewMode(isViewState === true);
+    }
+  }, [isViewProp, isViewState]);
+
+  const updateViewMode = (next) => {
+    setViewMode(next);
+    // ✅ تحديث isViewState في الـ hook فقط إذا لم يكن isViewProp محدد من الخارج
+    if (isViewProp === undefined) {
+      setIsView(next);
+    }
+  };
+  const [errorMsg, setErrorMsg] = useState("");
+  const [buildingLicenseFileUrl, setBuildingLicenseFileUrl] = useState("");
+  // ✅ تتبع ما إذا كان license_no تم إنشاؤه تلقائياً من license_project_no
+  const [isLicenseNoAutoGenerated, setIsLicenseNoAutoGenerated] = useState(false);
+
+  const readonlyHint = t("no_edit_source_siteplan");
+  const licProjectNoLabel = t("license_project_no");
+
+  // تحميل URL الملف المحفوظ والتحقق من العلاقة بين license_project_no و license_no
+  useEffect(() => {
+    if (!projectId || !existingId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`projects/${projectId}/license/`);
+        if (Array.isArray(data) && data.length > 0) {
+          const licenseData = data[0];
+          if (licenseData.building_license_file) {
+            setBuildingLicenseFileUrl(licenseData.building_license_file);
+          }
+          
+          // ✅ التحقق من العلاقة بين license_project_no و license_no
+          if (licenseData.license_project_no && licenseData.license_no) {
+            const expectedLicenseNo = licenseData.license_project_no + "-P01";
+            if (licenseData.license_no === expectedLicenseNo || licenseData.license_no.startsWith(licenseData.license_project_no + "-")) {
+              setIsLicenseNoAutoGenerated(true);
+            }
+          }
+        }
+      } catch (e) {}
+    })();
+  }, [projectId, existingId]);
+  
+  // ✅ عند تحميل البيانات من useLicense hook، نتحقق من العلاقة
+  useEffect(() => {
+    if (form.license_project_no && form.license_no) {
+      const expectedLicenseNo = form.license_project_no + "-P01";
+      // إذا كان license_no يبدأ بـ license_project_no + "-"، فهو تم إنشاؤه تلقائياً
+      if (form.license_no === expectedLicenseNo || form.license_no.startsWith(form.license_project_no + "-")) {
+        setIsLicenseNoAutoGenerated(true);
+      } else {
+        setIsLicenseNoAutoGenerated(false);
+      }
+    } else if (!form.license_project_no && !form.license_no) {
+      setIsLicenseNoAutoGenerated(false);
+    }
+  }, [form.license_project_no, form.license_no]);
+
+  const LICENSE_TYPES = useMemo(
+    () => [
+      { value: "new_build_empty_land", label: t("license_type") + " - " + t("license_type_new_build") },
+      { value: "renovation", label: t("license_type_renovation") },
+      { value: "extension", label: t("license_type_extension") },
+    ],
+    [t]
+  );
+
+  // بناء الحمولة
+  const buildPayload = () => {
+    const normalized = {
+      ...form,
+      issue_date: toIsoDate(form.issue_date),
+      last_issue_date: toIsoDate(form.last_issue_date),
+      expiry_date: toIsoDate(form.expiry_date),
+      technical_decision_date: toIsoDate(form.technical_decision_date),
+    };
+
+    if (normalized.last_issue_date && normalized.issue_date) {
+      const last = new Date(normalized.last_issue_date);
+      const first = new Date(normalized.issue_date);
+      if (last < first) {
+        throw new Error(t("last_issue_date_error"));
+      }
+    }
+
+    const fd = new FormData();
+    Object.entries(normalized).forEach(([k, v]) => {
+      if (v === null || v === undefined || v === "") return;
+      if (typeof v === "object" && !(v instanceof File) && !(v instanceof Blob)) {
+        fd.append(k, JSON.stringify(v));
+      } else {
+        fd.append(k, v);
+      }
+    });
+
+    // ✅ لا نرسل owners - الرخصة تأخذ الملاك من السايت بلان تلقائياً
+    // هذا يضمن أن الملاك موحدة في كل النظام
+
+    if (form.building_license_file instanceof File) {
+      // تسمية الملف باسم موحد حسب نص الحقل
+      const labelText = t("attach_building_license") || "إرفاق رخصة البناء";
+      const renamedFile = renameFileForUpload(form.building_license_file, 'building_license_file', 0, labelText);
+      fd.append("building_license_file", renamedFile, renamedFile.name);
+    }
+    return fd;
+  };
+
+  // حفظ الاستشاري والمقاول في LocalStorage
+  const saveAndNext = async () => {
+    if (!projectId) {
+      setErrorMsg(t("open_specific_project_to_save"));
+      return;
+    }
+
+    try {
+      // حفظ الاستشاري
+      if (form.design_consultant_name && form.design_consultant_license_no) {
+        saveToList("consultants", {
+          name: form.design_consultant_name,
+          name_en: form.design_consultant_name_en || "",
+          license: form.design_consultant_license_no
+        });
+      }
+
+      // ✅ لا نحفظ المقاول في LocalStorage - المقاول = الشركة نفسها (بيانات ثابتة)
+
+      const payload = buildPayload();
+
+      let response;
+      if (existingId) {
+        response = await api.patch(`projects/${projectId}/license/${existingId}/`, payload);
+      } else {
+        response = await api.post(`projects/${projectId}/license/`, payload);
+        if (response?.data?.id) setExistingId(response.data.id);
+      }
+
+      setErrorMsg("");
+      
+      // ✅ إعادة تحميل البيانات من الـ API بعد الحفظ (مثل SitePlanStep)
+      try {
+        const { data } = await api.get(`projects/${projectId}/license/`);
+        if (Array.isArray(data) && data.length > 0) {
+          const licenseData = data[0];
+          
+          // ✅ تحديث form مع البيانات المحفوظة (استخدام useLicense hook logic)
+          setF("building_license_file", null); // إزالة File object
+          if (licenseData.building_license_file) {
+            setBuildingLicenseFileUrl(licenseData.building_license_file);
+          }
+          
+          // ✅ تحديث الحقول الأساسية فقط (لا نعيد تحميل كل شيء لتجنب loops)
+          if (licenseData.contractor_phone !== undefined) {
+            setF("contractor_phone", licenseData.contractor_phone || "");
+          }
+          if (licenseData.contractor_email !== undefined) {
+            setF("contractor_email", licenseData.contractor_email || "");
+          }
+          if (licenseData.contractor_name_en !== undefined) {
+            setF("contractor_name_en", licenseData.contractor_name_en || "");
+          }
+        }
+      } catch (e) {
+        console.error("Error reloading license data after save:", e);
+        // لا نرمي خطأ هنا لأن الحفظ نجح بالفعل
+      }
+      
+      // ✅ إرسال حدث لتحديث بيانات المشروع في WizardPage
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("license-updated", { detail: { projectId } }));
+      }
+      
+      // ✅ الانتقال للخطوة التالية تلقائياً
+      updateViewMode(true);
+      if (hasNextStep && typeof onNext === "function") {
+        onNext();
+      }
+    } catch (err) {
+      // محاولة استخدام formatLicenseServerErrors أولاً
+      const serverData = err?.response?.data;
+      const formatted = formatLicenseServerErrors(serverData);
+      
+      // إذا لم يكن هناك تنسيق محدد، استخدم معالج الأخطاء الموحد
+      if (formatted) {
+        setErrorMsg(formatted);
+      } else {
+        const errorMessage = getErrorMessage(err, "حفظ الرخصة");
+        setErrorMsg(errorMessage || t("save_failed"));
+      }
+    }
+  };
+
+  return (
+    <WizardShell title={t("wizard_step_license")}>
+      <Dialog
+        open={!!errorMsg}
+        title={t("warning")}
+        desc={<pre className="pre-wrap m-0">{errorMsg}</pre>}
+        confirmLabel={t("ok")}
+        onClose={() => setErrorMsg("")}
+        onConfirm={() => setErrorMsg("")}
+      />
+
+      {viewMode && (
+        <div className={`row ${isAR ? "justify-start" : "justify-end"} mb-12`}>
+          <Button variant="secondary" onClick={() => updateViewMode(false)}>
+            {t("edit")}
+          </Button>
+        </div>
+      )}
+
+      {/* 1) بيانات الرخصة */}
+      <div className="wizard-section">
+        <h4 className="wizard-section-title">{t("license_details")}</h4>
+        {viewMode ? (
+          <div className="form-grid cols-3" style={{ gap: "var(--space-4)" }}>
+            <ViewRow label={t("license_type")} value={LICENSE_TYPES.find(x => x.value === form.license_type)?.label || form.license_type} />
+            <ViewRow label={licProjectNoLabel} value={form.license_project_no} />
+            <ViewRow label={t("issue_date_first")} value={formatDate(form.issue_date, i18n.language)} />
+            <ViewRow label={t("license_no")} value={form.license_no} style={{ direction: "ltr", textAlign: isAR ? "right" : "left" }} />
+            <Field label={t("attach_building_license")}>
+              <FileAttachmentView
+                fileUrl={buildingLicenseFileUrl}
+                fileName={buildingLicenseFileUrl ? extractFileNameFromUrl(buildingLicenseFileUrl) : ""}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/license/`}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="form-grid cols-3" style={{ gap: "var(--space-4)" }}>
+            <Field label={t("license_type")}>
+              <div className="row row--align-center" style={{ gap: "var(--space-2)" }}>
+                <RtlSelect
+                  className="rtl-select"
+                  options={LICENSE_TYPES}
+                  value={form.license_type}
+                  onChange={(v) => setF("license_type", v)}
+                  placeholder={t("select_license_type")}
+                />
+                <InfoTip align="start" text={t("note_take_data_as_in_license")} />
+              </div>
+            </Field>
+            <Field label={licProjectNoLabel}>
+              <input
+                className="input"
+                value={form.license_project_no}
+                onChange={(e) => {
+                  // ✅ تحويل إلى UPPERCASE وإزالة أي حروف غير إنجليزية
+                  const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                  const formatted = formatProjectNumber(cleaned);
+                  setF("license_project_no", formatted);
+                  
+                  // ✅ إذا كان license_no فارغ أو تم إنشاؤه تلقائياً من قبل، نحدثه تلقائياً
+                  if (formatted) {
+                    if (!form.license_no || isLicenseNoAutoGenerated) {
+                      // نحدث license_no برقم المشروع + "-P01" في النهاية
+                      setF("license_no", formatted + "-P01");
+                      setIsLicenseNoAutoGenerated(true);
+                    }
+                  } else {
+                    // إذا تم حذف رقم المشروع، نحذف رقم الرخصة أيضاً إذا كان تم إنشاؤه تلقائياً
+                    if (isLicenseNoAutoGenerated) {
+                      setF("license_no", "");
+                      setIsLicenseNoAutoGenerated(false);
+                    }
+                  }
+                }}
+                style={{ textTransform: "uppercase" }}
+              />
+            </Field>
+            <Field label={t("issue_date_first")}>
+              <DateInput
+                className="input"
+                value={form.issue_date || ""}
+                onChange={(value) => setF("issue_date", value)}
+              />
+            </Field>
+            <Field label={t("license_no")}>
+              <input
+                className="input"
+                value={form.license_no}
+                onChange={(e) => {
+                  // ✅ تحويل إلى UPPERCASE وإزالة أي حروف غير إنجليزية
+                  const newValue = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                  setF("license_no", newValue);
+                  // ✅ إذا قام المستخدم بتعديل license_no يدوياً، نوقف التحديث التلقائي
+                  const expectedAutoValue = form.license_project_no + "-P01";
+                  if (newValue !== expectedAutoValue) {
+                    setIsLicenseNoAutoGenerated(false);
+                  }
+                }}
+                style={{ textTransform: "uppercase", direction: "ltr", textAlign: isAR ? "right" : "left" }}
+                dir="ltr"
+              />
+            </Field>
+            <Field label={t("attach_building_license")}>
+              <FileUpload
+                value={form.building_license_file}
+                onChange={(file) => setF("building_license_file", file)}
+                accept=".pdf,.jpg,.jpeg,.png"
+                maxSizeMB={10}
+                showPreview={true}
+                existingFileUrl={buildingLicenseFileUrl}
+                existingFileName={buildingLicenseFileUrl ? extractFileNameFromUrl(buildingLicenseFileUrl) : ""}
+                onRemoveExisting={() => {
+                  setBuildingLicenseFileUrl("");
+                  setF("building_license_file", null);
+                }}
+                fileType="building_license_file"
+                fileIndex={0}
+              />
+            </Field>
+          </div>
+        )}
+      </div>
+      
+      {/* 3) بيانات الملاك - يظهر فقط في وضع العرض */}
+      {viewMode && (
+        <div className="wizard-section">
+          <h4 className="wizard-section-title">{t("owner_details")}</h4>
+          {owners && owners.length ? (
+            owners.map((o, i) => (
+              <div key={i} className="owner-block">
+                <div className="form-grid cols-3" style={{ gap: "var(--space-4)" }}>
+                  <ViewRow label={t("owner_name_ar")} value={o.owner_name_ar || t("empty_value")} />
+                  <ViewRow label={t("owner_name_en")} value={o.owner_name_en || t("empty_value")} />
+                  <div />
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="row row--align-center row--gap-8 mt-8">
+              <InfoTip align="start" text={t("no_owners_in_siteplan")} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4) الاستشاري */}
+      <div className="wizard-section">
+        <h4 className="wizard-section-title">{t("consultant_details")}</h4>
+        <Field label={t("consultant_same_question")}>
+          <YesNoChips
+            value={form.consultant_same ? "yes" : "no"}
+            onChange={(v) => {
+              const same = v === "yes";
+              setF("consultant_same", same);
+              if (same) {
+                setF("supervision_consultant_name", form.design_consultant_name);
+                setF("supervision_consultant_name_en", form.design_consultant_name_en);
+                setF("supervision_consultant_license_no", form.design_consultant_license_no);
+              } else {
+                setF("supervision_consultant_name", "");
+                setF("supervision_consultant_name_en", "");
+                setF("supervision_consultant_license_no", "");
+              }
+            }}
+          />
+        </Field>
+
+        {/* ✅ إذا كان استشاري واحد فقط → كارت واحد ممتد */}
+        {form.consultant_same ? (
+          <div style={{
+            background: "var(--surface)",
+            borderRadius: "12px",
+            padding: "24px",
+            border: "1px solid var(--border)",
+            marginTop: "var(--space-6)"
+          }}>
+            <h5 style={{
+              margin: "0 0 20px 0",
+              fontSize: "18px",
+              fontWeight: "600",
+              color: "var(--text)",
+              paddingBottom: "12px",
+              borderBottom: "2px solid var(--primary)"
+            }}>
+              {t("consultant")}
+            </h5>
+            <PersonField
+              type="consultant"
+              label={t("consultant")}
+              licenseLabel={t("consultant_lic")}
+              nameValue={form.design_consultant_name}
+              nameEnValue={form.design_consultant_name_en}
+              licenseValue={form.design_consultant_license_no}
+              onNameChange={(v) => {
+                setF("design_consultant_name", v);
+                setF("supervision_consultant_name", v);
+              }}
+              onNameEnChange={(v) => {
+                setF("design_consultant_name_en", v);
+                setF("supervision_consultant_name_en", v);
+              }}
+              onLicenseChange={(v) => {
+                let formatted = v;
+                if (v && !v.startsWith("CN-")) {
+                  formatted = "CN-" + v.replace(/^CN-/, "");
+                }
+                setF("design_consultant_license_no", formatted);
+                setF("supervision_consultant_license_no", formatted);
+              }}
+              isView={viewMode}
+              onSelect={(c) => {
+                setF("supervision_consultant_name", c.name || "");
+                setF("supervision_consultant_name_en", c.name_en || "");
+                setF("supervision_consultant_license_no", c.license || "");
+              }}
+            />
+          </div>
+        ) : (
+          /* ✅ إذا كان استشاريين → كروتين جنب بعض */
+          <div className="form-grid cols-2" style={{ gap: "24px", alignItems: "flex-start", marginTop: "var(--space-6)" }}>
+            {/* كارت استشاري التصميم */}
+            <div style={{
+              background: "var(--surface)",
+              borderRadius: "12px",
+              padding: "24px",
+              border: "1px solid var(--border)"
+            }}>
+              <h5 style={{
+                margin: "0 0 20px 0",
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "var(--text)",
+                paddingBottom: "12px",
+                borderBottom: "2px solid var(--primary)"
+              }}>
+                {t("design_consultant")}
+              </h5>
+              <PersonField
+                type="consultant"
+                label={t("consultant")}
+                licenseLabel={t("consultant_lic")}
+                nameValue={form.design_consultant_name}
+                nameEnValue={form.design_consultant_name_en}
+                licenseValue={form.design_consultant_license_no}
+                onNameChange={(v) => setF("design_consultant_name", v)}
+                onNameEnChange={(v) => setF("design_consultant_name_en", v)}
+                onLicenseChange={(v) => {
+                  let formatted = v;
+                  if (v && !v.startsWith("CN-")) {
+                    formatted = "CN-" + v.replace(/^CN-/, "");
+                  }
+                  setF("design_consultant_license_no", formatted);
+                }}
+                isView={viewMode}
+              />
+            </div>
+
+            {/* كارت استشاري الإشراف */}
+            <div style={{
+              background: "var(--surface)",
+              borderRadius: "12px",
+              padding: "24px",
+              border: "1px solid var(--border)"
+            }}>
+              <h5 style={{
+                margin: "0 0 20px 0",
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "var(--text)",
+                paddingBottom: "12px",
+                borderBottom: "2px solid var(--primary)"
+              }}>
+                {t("supervision_consultant")}
+              </h5>
+              <PersonField
+                type="consultant"
+                label={t("consultant")}
+                licenseLabel={t("consultant_lic")}
+                nameValue={form.supervision_consultant_name}
+                nameEnValue={form.supervision_consultant_name_en}
+                licenseValue={form.supervision_consultant_license_no}
+                onNameChange={(v) => setF("supervision_consultant_name", v)}
+                onNameEnChange={(v) => setF("supervision_consultant_name_en", v)}
+                onLicenseChange={(v) => {
+                  let formatted = v;
+                  if (v && !v.startsWith("CN-")) {
+                    formatted = "CN-" + v.replace(/^CN-/, "");
+                  }
+                  setF("supervision_consultant_license_no", formatted);
+                }}
+                isView={viewMode}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 5) المقاول - بيانات ثابتة من إعدادات الشركة (Read Only) */}
+      <div className="wizard-section">
+        <h4 className="wizard-section-title">{t("contractor_details")}</h4>
+        <div style={{
+          padding: 'var(--space-3)',
+          backgroundColor: '#f9fafb',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-4)',
+          fontSize: 'var(--font-size-sm)',
+          color: '#6b7280'
+        }}>
+          {isAR 
+            ? '⚠️ بيانات المقاول ثابتة ومستمدة من إعدادات الشركة. لا يمكن تعديلها من هنا. للتعديل، يرجى الذهاب إلى إعدادات الشركة.'
+            : '⚠️ Contractor information is fixed and derived from company settings. Cannot be modified here. To modify, please go to Company Settings.'
+          }
+        </div>
+        <PersonField
+          type="contractor"
+          label={t("contractor")}
+          licenseLabel={t("contractor_lic")}
+          nameValue={form.contractor_name || ""}
+          nameEnValue={form.contractor_name_en || ""}
+          licenseValue={form.contractor_license_no || ""}
+          phoneValue={form.contractor_phone || ""}
+          emailValue={form.contractor_email || ""}
+          onNameChange={() => {}} // ✅ Read Only - لا يمكن التعديل
+          onNameEnChange={() => {}} // ✅ Read Only
+          onLicenseChange={() => {}} // ✅ Read Only
+          onPhoneChange={() => {}} // ✅ Read Only
+          onEmailChange={() => {}} // ✅ Read Only
+          isView={true} // ✅ دائماً Read Only
+        />
+      </div>
+
+      {!viewMode && (
+        <StepActions
+          onPrev={onPrev}
+          onNext={saveAndNext}
+          nextLabel={hasNextStep ? undefined : t("save")}
+        />
+      )}
+    </WizardShell>
+  );
+}

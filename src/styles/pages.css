@@ -1,0 +1,100 @@
+/* ==================== PAGE-SPECIFIC STYLES ==================== */
+
+/* Profile Page */
+.profile-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+.profile-section {
+  margin-bottom: var(--space-8);
+}
+
+.profile-section:last-child {
+  margin-bottom: 0;
+}
+
+.profile-section-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-6);
+  color: var(--color-text-primary);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid var(--color-primary);
+}
+
+.profile-avatar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.profile-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface-2);
+  position: relative;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Login Page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 450px;
+}
+
+.login-title {
+  font-size: var(--font-size-3xl);
+  text-align: center;
+  margin-bottom: var(--space-2);
+  color: var(--color-primary);
+}
+
+/* Form Grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .profile-page {
+    padding: var(--space-4);
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .login-card {
+    max-width: 100%;
+  }
+}

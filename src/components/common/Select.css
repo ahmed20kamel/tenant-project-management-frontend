@@ -1,0 +1,35 @@
+.unified-select {
+  width: 100%;
+}
+
+.unified-select .us__control {
+  border-radius: var(--radius-md, 8px);
+  font-size: var(--font-size-base, 14px);
+  font-family: inherit;
+}
+
+.unified-select .us__value-container {
+  padding: 8px 12px;
+}
+
+.unified-select .us__input {
+  color: var(--color-text-primary);
+}
+
+.unified-select .us__indicator-separator {
+  background-color: var(--color-border);
+}
+
+.unified-select .us__dropdown-indicator {
+  color: var(--color-text-tertiary);
+}
+
+.unified-select .us__clear-indicator {
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.unified-select .us__clear-indicator:hover {
+  color: var(--color-text-primary);
+}
+

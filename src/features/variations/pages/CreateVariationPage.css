@@ -1,0 +1,33 @@
+/* CreateVariationPage.css */
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.prj-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.prj-input:focus {
+  outline: none;
+  border-color: var(--primary, #007bff);
+}
+
+.prj-input:read-only {
+  background: #e9ecef;
+  cursor: not-allowed;
+}
+

@@ -1,0 +1,128 @@
+.invoice-table-wrapper {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.invoice-table thead {
+  background: var(--color-surface, #f9fafb);
+  border-bottom: 2px solid var(--color-border, #e5e7eb);
+}
+
+.invoice-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.invoice-table th.text-right {
+  text-align: right;
+}
+
+.invoice-table th.text-center {
+  text-align: center;
+}
+
+.invoice-table tbody tr {
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.invoice-table tbody tr:hover {
+  background-color: var(--color-primary-light, #f0f9ff);
+}
+
+.invoice-table tbody tr.invoice-table-row--selected {
+  background-color: var(--color-primary-light, #f0f9ff);
+  border-left: 3px solid var(--color-primary, #3b82f6);
+}
+
+.invoice-table td {
+  padding: 16px;
+  color: var(--color-text-primary, #111827);
+}
+
+.invoice-table-cell--invoice-number {
+  font-weight: 600;
+}
+
+.invoice-table-cell--amount {
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.invoice-table-cell--paid {
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.invoice-table-cell--remaining {
+  font-weight: 600;
+}
+
+.invoice-type-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.invoice-type-badge--initial {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.invoice-type-badge--actual {
+  background-color: #f3e8ff;
+  color: #6b21a8;
+}
+
+.invoice-status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.invoice-payment-link {
+  color: var(--color-primary, #3b82f6);
+  font-weight: 500;
+}
+
+.invoice-payment-link--none {
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+.invoice-table-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.invoice-table-empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.invoice-table-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
