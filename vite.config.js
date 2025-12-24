@@ -19,13 +19,7 @@ export default defineConfig({
   },
   build: {
     // ✅ تحسينات الإنتاج
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // إزالة console.log في الإنتاج
-        drop_debugger: true,
-      },
-    },
+    minify: 'esbuild', // ✅ استخدام esbuild (أسرع ولا يحتاج dependency إضافي)
     sourcemap: false, // إزالة source maps في الإنتاج
     rollupOptions: {
       output: {
