@@ -49,7 +49,6 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
       // ✅ استخدام buildFileUrl للحصول على API endpoint محمي
       const apiUrl = buildFileUrl(fileUrl);
       if (!apiUrl) {
-        console.error('لا يمكن بناء URL للملف:', fileUrl);
         return;
       }
 
@@ -105,7 +104,6 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
               await openFileInNewWindow(fileUrl, displayName, {});
               return;
             } catch (refreshError) {
-              console.error("Token refresh failed:", refreshError);
               throw new Error("Authentication failed. Please login again.");
             }
           }
@@ -120,7 +118,6 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
       const { openFileInNewWindow } = await import("../../utils/fileHelpers");
       await openFileInNewWindow(fileUrl, displayName, {});
     } catch (error) {
-      console.error('خطأ في فتح الملف:', error);
       // ✅ Fallback: محاولة فتح الملف مباشرة (للملفات العامة)
       try {
         const fullUrl = buildFileUrl(fileUrl);
@@ -134,7 +131,7 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
           document.body.removeChild(link);
         }
       } catch (fallbackError) {
-        console.error('خطأ في fallback:', fallbackError);
+        // Silent fail
       }
     }
   };
@@ -152,7 +149,6 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
       // ✅ استخدام buildFileUrl للحصول على API endpoint محمي
       const apiUrl = buildFileUrl(fileUrl);
       if (!apiUrl) {
-        console.warn("Could not build download URL");
         return;
       }
 
@@ -196,7 +192,6 @@ export default function FileAttachmentView({ fileUrl, fileName, projectId, endpo
       // ✅ تنظيف blob URL بعد التحميل
       setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     } catch (error) {
-      console.error("Download error:", error);
       // Fallback: فتح في نافذة جديدة
       handleView(e);
     }

@@ -82,11 +82,6 @@ export default function useContract(projectId) {
           const s = data[0];
           setExistingId(s.id);
           
-          // ✅ تسجيل البيانات الكاملة من API للتحقق
-          if (process.env.NODE_ENV === "development") {
-            console.log("🔍 Full contract data from API:", s);
-            console.log("🔍 Raw attachments array:", s.attachments);
-          }
           
           // ✅ تصفية attachments لإزالة أي مرفقات من نوع "main_contract"
           //    لأن العقد الأصيل له قسم مستقل ولا يجب أن يظهر في الملاحق التعاقدية
@@ -100,12 +95,6 @@ export default function useContract(projectId) {
                   return true;
                 })
                 .map(att => {
-                  // ✅ تسجيل البيانات الفعلية للتحقق
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("🔍 Raw attachment from API:", att);
-                    console.log("🔍 Attachment file_url:", att.file_url);
-                    console.log("🔍 Attachment file_name:", att.file_name);
-                  }
                   
                   // ✅ محاولة قراءة file_url من عدة مصادر محتملة
                   const fileUrl = att.file_url || att.file || null;
@@ -121,17 +110,11 @@ export default function useContract(projectId) {
                     file_name: fileName,
                   };
                   
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("✅ Mapped attachment:", mappedAtt);
-                  }
                   
                   return mappedAtt;
                 })
             : [];
           
-          if (process.env.NODE_ENV === "development") {
-            console.log("✅ Filtered attachments:", filteredAttachments);
-          }
           
           setForm((prev) => ({
             ...prev,
@@ -212,7 +195,7 @@ export default function useContract(projectId) {
           const ownersArr = Array.isArray(sp.owners) ? sp.owners : [];
           setForm((prev) => {
             // ✅ إذا كان owners موجود في العقد، نستخدمه، وإلا نستخدم owners من SitePlan
-            if (prev.owners?.length) {
+            if (Array.isArray(prev.owners) && prev.owners.length > 0) {
               return prev; // لا نغير owners إذا كانت موجودة من العقد
             }
             return {

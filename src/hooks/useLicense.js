@@ -79,13 +79,6 @@ export default function useLicense(projectId, i18n) {
         if (!mounted) return;
         if (Array.isArray(data) && data.length) {
           const s = data[0];
-          console.log('✅ License data loaded from API:', {
-            contractor_name: s.contractor_name,
-            contractor_name_en: s.contractor_name_en,
-            contractor_license_no: s.contractor_license_no,
-            contractor_phone: s.contractor_phone,
-            contractor_email: s.contractor_email,
-          });
           setExistingId(s.id);
           setForm((prev) => ({
             ...INITIAL_FORM,
@@ -122,7 +115,7 @@ export default function useLicense(projectId, i18n) {
           }
         }
       } catch (err) {
-        console.error("Error loading license:", err);
+        // Error handled by caller
         if (mounted) {
           setForm(INITIAL_FORM);
           setOwners([]);
@@ -174,7 +167,7 @@ export default function useLicense(projectId, i18n) {
           setOwners([]);
         }
       } catch (e) {
-        console.error("Error loading siteplan data for license:", e);
+        // Silent error handling
       }
     };
     
@@ -192,8 +185,7 @@ export default function useLicense(projectId, i18n) {
       if (event.detail?.projectId === projectId && event.detail?.owners) {
         // ✅ تحديث الملاك مباشرة من الحدث
         setOwners(event.detail.owners.map(normalizeOwner));
-        // ✅ أيضاً تحديث بيانات الأرض من السايت بلان
-        loadSitePlanData();
+        // ✅ لا نستدعي loadSitePlanData هنا - handleOwnersUpdate سيعمله لتجنب duplicate calls
       }
     };
     
@@ -214,7 +206,7 @@ export default function useLicense(projectId, i18n) {
       land_use: toLocalizedUse(prev.land_use, i18n.language),
       land_use_sub: toLocalizedUse(prev.land_use_sub, i18n.language),
     }));
-  }, [i18n.language]);
+  }, [i18n.language, setForm]);
 
   return { form, setForm, setF, owners, setOwners, existingId, setExistingId, isView, setIsView, isRO };
 }

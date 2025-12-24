@@ -53,7 +53,6 @@ function extractMediaPath(fileUrl) {
  */
 export function buildFileUrl(fileUrl) {
   if (!fileUrl || typeof fileUrl !== "string") {
-    console.warn("buildFileUrl: fileUrl is invalid", fileUrl);
     return null;
   }
   
@@ -65,7 +64,6 @@ export function buildFileUrl(fileUrl) {
   // ✅ استخراج مسار الملف النسبي
   const mediaPath = extractMediaPath(fileUrl);
   if (!mediaPath) {
-    console.warn("buildFileUrl: Could not extract media path from", fileUrl);
     return null;
   }
   
@@ -96,10 +94,6 @@ export function buildFileUrl(fileUrl) {
   }
   
   const apiUrl = `${apiBase}/files/${encodedPath}`;
-  
-  if (process.env.NODE_ENV === "development") {
-    console.log("buildFileUrl:", { fileUrl, mediaPath, encodedPath, apiBase, apiUrl });
-  }
   
   return apiUrl;
 }
@@ -166,7 +160,6 @@ async function fetchFileWithAuth(fileUrl) {
           
           return await retryResponse.blob();
         } catch (refreshError) {
-          console.error("Token refresh failed:", refreshError);
           throw new Error("Authentication failed. Please login again.");
         }
       }
@@ -265,7 +258,6 @@ function createFileViewerHTML(blob, fileName, mimeType) {
  */
 export async function openFileInNewWindow(fileUrl, fileName = null, options = {}) {
   if (!fileUrl) {
-    console.warn("openFileInNewWindow: fileUrl is required");
     return;
   }
   
@@ -295,7 +287,6 @@ export async function openFileInNewWindow(fileUrl, fileName = null, options = {}
     const newWindow = window.open(htmlBlobUrl, target, features);
     
     if (!newWindow) {
-      console.warn("Popup blocked. Trying fallback method.");
       // Fallback: استخدام <a> tag
       const link = document.createElement('a');
       link.href = htmlBlobUrl;
@@ -312,7 +303,6 @@ export async function openFileInNewWindow(fileUrl, fileName = null, options = {}
       // Note: blob URL داخل HTML سيتم تنظيفه عند إغلاق الصفحة
     }, 1000);
   } catch (error) {
-    console.error("Error opening file with auth:", error);
     // ✅ Fallback: محاولة فتح الملف مباشرة (للملفات العامة)
     const fullUrl = buildFileUrl(fileUrl);
     if (fullUrl) {

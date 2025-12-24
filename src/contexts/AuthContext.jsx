@@ -4,59 +4,8 @@ import { api } from '../services/api';
 const AuthContext = createContext(null);
 
 // استخدام نفس api instance من services/api.js
+// ✅ لا نحتاج لإضافة interceptors هنا لأن api.js يضيفها بالفعل (request + response)
 const apiClient = api;
-
-// إضافة interceptor لإضافة JWT token تلقائياً
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// إضافة interceptor لتحديث token تلقائياً
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          const response = await apiClient.post('auth/token/refresh/', {
-            refresh: refreshToken,
-          });
-
-          const { access } = response.data;
-          localStorage.setItem('access_token', access);
-          originalRequest.headers.Authorization = `Bearer ${access}`;
-
-          return apiClient(originalRequest);
-        }
-      } catch (refreshError) {
-        // إذا فشل refresh، نخرج المستخدم
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('permissions');
-        localStorage.removeItem('tenant_theme');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
 
 // دالة لتعديل سطوع اللون
 const adjustColorBrightness = (hex, percent) => {
@@ -138,7 +87,6 @@ export function AuthProvider({ children }) {
       // التحقق من وجود token قبل محاولة تحميل Theme
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.warn('No access token found, skipping theme load');
         // إذا كان مطلوب استخدام stored theme كـ fallback
         if (useStoredAsFallback) {
           const storedTheme = localStorage.getItem('tenant_theme');
@@ -149,7 +97,7 @@ export function AuthProvider({ children }) {
               applyTheme(themeData);
               return themeData;
             } catch (e) {
-              console.error('Error parsing stored theme:', e);
+              // Silent fail
             }
           }
         }
@@ -157,13 +105,11 @@ export function AuthProvider({ children }) {
       }
       
       // ✅ دائماً تحميل من API أولاً - لا نعتمد على localStorage
-      console.log('🔄 Loading tenant theme from API...');
       const response = await apiClient.get('auth/tenant-settings/theme/');
       const themeData = response.data;
       
       // ✅ التأكد من وجود البيانات المطلوبة
       if (!themeData) {
-        console.error('❌ No theme data returned from API');
         throw new Error('No theme data returned');
       }
       
@@ -173,15 +119,6 @@ export function AuthProvider({ children }) {
       if (!themeData.tenant_id && currentUser?.tenant?.id) {
         themeData.tenant_id = String(currentUser.tenant.id);
       }
-      
-      // ✅ حفظ وتطبيق Theme من API فقط
-      console.log('✅ Theme loaded from API:', {
-        tenant_id: themeData.tenant_id,
-        company_name: themeData.company_name,
-        logo_url: themeData.logo_url ? 'Present' : 'Missing',
-        primary_color: themeData.primary_color,
-        secondary_color: themeData.secondary_color,
-      });
       
       // ✅ تطبيق Theme مباشرة
       setTenantTheme(themeData);
@@ -214,13 +151,7 @@ export function AuthProvider({ children }) {
         return null;
       }
       
-      // ✅ تسجيل الأخطاء الأخرى فقط (404, 403, 500, etc.)
-      if (status !== 401) {
-        console.error('❌ Error loading tenant theme from API:', {
-          status: status,
-          message: error.message,
-        });
-      }
+      // Silent error handling
       
       // إذا كان الخطأ 404 أو 403، لا نستخدم Theme افتراضي
       if (status === 404 || status === 403) {
@@ -254,7 +185,6 @@ export function AuthProvider({ children }) {
       
       // ✅ فقط إذا كان مطلوب استخدام fallback
       if (useStoredAsFallback) {
-        console.log('📦 Using default theme as fallback');
         setTenantTheme(defaultTheme);
         applyTheme(defaultTheme);
       }
@@ -272,22 +202,13 @@ export function AuthProvider({ children }) {
   // تحميل بيانات المستخدم من localStorage عند التحميل
   useEffect(() => {
     const loadInitialData = async () => {
-      console.log('🚀 Starting initial data load...');
       const storedUser = localStorage.getItem('user');
       const storedPermissions = localStorage.getItem('permissions');
       const token = localStorage.getItem('access_token');
 
-      console.log('📦 Initial load - storedUser:', !!storedUser, 'token:', !!token);
-
       if (storedUser) {
         try {
           const userData = JSON.parse(storedUser);
-          console.log('👤 User data parsed:', {
-            email: userData.email,
-            tenant_id: userData.tenant?.id,
-            is_superuser: userData.is_superuser,
-          });
-          
           setUser(userData);
           
           if (storedPermissions) {
@@ -303,51 +224,28 @@ export function AuthProvider({ children }) {
           if (token) {
             if (userData.is_superuser) {
               // Super Admin → مسح أي Theme محفوظ واستخدام Admin Theme فقط
-              console.log('👤 Super Admin detected in initial load, applying admin theme');
               localStorage.removeItem('tenant_theme');
               localStorage.removeItem('tenant_id');
               setTenantTheme(null);
               applyAdminTheme();
             } else if (userData.tenant) {
               // Tenant User → تحميل Theme الشركة مباشرة
-              console.log('🏢 Tenant User detected in initial load, loading theme from API for tenant:', userData.tenant.id);
-              console.log('🔄 About to call loadTenantTheme(true)...');
-              
               // ✅ دائماً تحميل Theme من API مباشرة
               try {
-                const theme = await loadTenantTheme(true);
-                if (theme) {
-                  console.log('✅ Theme loaded successfully in initial load:', {
-                    company_name: theme.company_name,
-                    logo_url: theme.logo_url ? 'Present' : 'Missing',
-                    primary_color: theme.primary_color,
-                    secondary_color: theme.secondary_color,
-                  });
-                } else {
-                  console.warn('⚠️ loadTenantTheme returned null/undefined');
-                }
+                await loadTenantTheme(true);
               } catch (err) {
-                console.error('❌ Failed to load tenant theme in initial load:', err);
-                console.error('Error stack:', err.stack);
+                // Silent fail
               }
-            } else {
-              console.warn('⚠️ User has no tenant, skipping theme load');
             }
-          } else {
-            console.warn('⚠️ No token found, skipping theme load');
           }
         } catch (e) {
-          console.error('❌ Error parsing stored user data:', e);
           localStorage.removeItem('user');
           localStorage.removeItem('permissions');
           localStorage.removeItem('tenant_theme');
         }
-      } else {
-        console.warn('⚠️ No stored user found');
       }
       
       setLoading(false);
-      console.log('✅ Initial data load completed');
     };
 
     loadInitialData();
@@ -426,7 +324,7 @@ export function AuthProvider({ children }) {
       
       return userData;
     } catch (error) {
-      console.error('Error refreshing user:', error);
+      // Silent error handling
       throw error;
     }
   };
@@ -491,7 +389,7 @@ export function AuthProvider({ children }) {
         is_super_admin
       };
     } catch (error) {
-      console.error('Login error:', error);
+      // Error handled by caller
       return {
         success: false,
         error: error.response?.data?.error || error.response?.data?.detail || 'Login failed',
@@ -504,12 +402,20 @@ export function AuthProvider({ children }) {
     try {
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {
-        await apiClient.post('auth/users/logout/', {
-          refresh_token: refreshToken,
-        });
+        try {
+          await apiClient.post('auth/users/logout/', {
+            refresh_token: refreshToken,
+          }, {
+            // ✅ تجاهل الأخطاء في logout - نكمل حتى لو فشل
+            validateStatus: (status) => status < 500,  // قبول 204, 400, 401, etc.
+          });
+        } catch (error) {
+          // ✅ تجاهل الأخطاء في logout - نكمل عملية logout
+          // Silent fail - نكمل في finally
+        }
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      // ✅ تجاهل الأخطاء - نكمل في finally
     } finally {
       // حفظ نوع المستخدم قبل مسح البيانات
       const isSuperAdmin = localStorage.getItem('is_super_admin') === 'true';

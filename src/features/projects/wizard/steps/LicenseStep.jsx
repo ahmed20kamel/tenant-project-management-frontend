@@ -31,14 +31,13 @@ export default function LicenseStep({ projectId, onPrev, onNext, isView: isViewP
   const { user } = useAuth();
   const { form, setF, owners, setOwners, existingId, setExistingId, isView: isViewState, setIsView } = useLicense(projectId, i18n);
   
-  // ✅ تحميل بيانات المقاول من TenantSettings تلقائياً (أولوية عالية)
+  // ✅ تحميل بيانات المقاول من TenantSettings تلقائياً (مرة واحدة فقط)
   useEffect(() => {
     if (!projectId || !user?.tenant) return;
     
     (async () => {
       try {
         const { data } = await api.get('auth/tenant-settings/current/');
-        console.log('✅ TenantSettings data loaded:', data);
         if (data) {
           // ✅ ملء بيانات المقاول من TenantSettings دائماً (Single Source of Truth)
           // نستخدم البيانات من TenantSettings حتى لو كانت موجودة في الـ API
@@ -60,50 +59,18 @@ export default function LicenseStep({ projectId, onPrev, onNext, isView: isViewP
           }
           
           if (Object.keys(updates).length > 0) {
-            console.log('✅ Updating contractor data from TenantSettings:', updates);
             Object.entries(updates).forEach(([key, value]) => {
               setF(key, value);
             });
-          } else {
-            console.warn('⚠️ No contractor data found in TenantSettings');
           }
         }
       } catch (e) {
         console.error('❌ Error loading contractor data from tenant settings:', e);
       }
     })();
+    // ✅ إزالة setF من dependencies - دالة مستقرة من hook ولا تحتاج أن تكون في deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user?.tenant]);
-  
-  // ✅ إعادة تحميل بيانات المقاول من TenantSettings بعد تحميل البيانات من الـ API
-  useEffect(() => {
-    if (!projectId || !user?.tenant || !existingId) return;
-    
-    (async () => {
-      try {
-        const { data } = await api.get('auth/tenant-settings/current/');
-        if (data) {
-          // ✅ تحديث بيانات المقاول من TenantSettings بعد تحميل الرخصة
-          if (data.contractor_name) {
-            setF("contractor_name", data.contractor_name);
-          }
-          if (data.contractor_name_en) {
-            setF("contractor_name_en", data.contractor_name_en);
-          }
-          if (data.contractor_license_no) {
-            setF("contractor_license_no", data.contractor_license_no);
-          }
-          if (data.contractor_phone) {
-            setF("contractor_phone", data.contractor_phone);
-          }
-          if (data.contractor_email) {
-            setF("contractor_email", data.contractor_email);
-          }
-        }
-      } catch (e) {
-        console.error('Error reloading contractor data from tenant settings:', e);
-      }
-    })();
-  }, [projectId, user?.tenant, existingId]);
 
   // ✅ توحيد السلوك: إذا كان isViewProp محدد من الخارج (من WizardPage)، نستخدمه مباشرة
   // الوضع الافتراضي هو التعديل (false) وليس الفيو

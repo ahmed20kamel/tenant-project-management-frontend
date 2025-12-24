@@ -34,18 +34,17 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
   const isAR = i18next.language === "ar";
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { form, setF, existingId, setExistingId, isView: isViewState, setIsView } = useContract(projectId);
+  const { form, setForm, setF, existingId, setExistingId, isView: isViewState, setIsView } = useContract(projectId);
   const authorizedOwnerLoadingRef = useRef(false);
   const authorizedOwnerLoadedOnceRef = useRef(false);
   
-  // ✅ تحميل بيانات المقاول من TenantSettings تلقائياً (أولوية عالية)
+  // ✅ تحميل بيانات المقاول من TenantSettings تلقائياً (مرة واحدة فقط)
   useEffect(() => {
     if (!projectId || !user?.tenant) return;
     
     (async () => {
       try {
         const { data } = await api.get('auth/tenant-settings/current/');
-        console.log('✅ TenantSettings data loaded:', data);
         if (data) {
           // ✅ ملء بيانات المقاول من TenantSettings دائماً (Single Source of Truth)
           // نستخدم البيانات من TenantSettings حتى لو كانت موجودة في الـ API
@@ -67,50 +66,18 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
           }
           
           if (Object.keys(updates).length > 0) {
-            console.log('✅ Updating contractor data from TenantSettings:', updates);
             Object.entries(updates).forEach(([key, value]) => {
               setF(key, value);
             });
-          } else {
-            console.warn('⚠️ No contractor data found in TenantSettings');
           }
         }
       } catch (e) {
         console.error('❌ Error loading contractor data from tenant settings:', e);
       }
     })();
+    // ✅ إزالة setF من dependencies - دالة مستقرة من hook ولا تحتاج أن تكون في deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user?.tenant]);
-  
-  // ✅ إعادة تحميل بيانات المقاول من TenantSettings بعد تحميل البيانات من الـ API
-  useEffect(() => {
-    if (!projectId || !user?.tenant || !existingId) return;
-    
-    (async () => {
-      try {
-        const { data } = await api.get('auth/tenant-settings/current/');
-        if (data) {
-          // ✅ تحديث بيانات المقاول من TenantSettings بعد تحميل العقد
-          if (data.contractor_name) {
-            setF("contractor_name", data.contractor_name);
-          }
-          if (data.contractor_name_en) {
-            setF("contractor_name_en", data.contractor_name_en);
-          }
-          if (data.contractor_license_no) {
-            setF("contractor_trade_license", data.contractor_license_no);
-          }
-          if (data.contractor_phone) {
-            setF("contractor_phone", data.contractor_phone);
-          }
-          if (data.contractor_email) {
-            setF("contractor_email", data.contractor_email);
-          }
-        }
-      } catch (e) {
-        console.error('Error reloading contractor data from tenant settings:', e);
-      }
-    })();
-  }, [projectId, user?.tenant, existingId]);
   // ✅ توحيد السلوك: إذا كان isViewProp محدد من الخارج (من WizardPage)، نستخدمه مباشرة
   // الوضع الافتراضي هو التعديل (false) وليس الفيو
   const [viewMode, setViewMode] = useState(() => {
@@ -388,7 +355,36 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         if (Array.isArray(data) && data.length > 0) {
           const spOwners = Array.isArray(data[0]?.owners) ? data[0].owners : [];
           if (spOwners.length) {
-            setF("owners", spOwners.map((o) => ({ ...o })));
+            // ✅ دمج البيانات: نأخذ phone و email من Contract الحالي إذا كانت موجودة
+            // ✅ استخدام setForm مباشرة لضمان قراءة أحدث قيمة
+            setForm((prev) => {
+              const currentOwners = Array.isArray(prev.owners) ? prev.owners : [];
+              const mergedOwners = spOwners.map((spOwner) => {
+                // ✅ البحث عن المالك المقابل في Contract (بناءً على id_number أو owner_name_ar)
+                const matchingOwner = currentOwners.find(
+                  (co) =>
+                    (spOwner.id_number && co.id_number && spOwner.id_number.trim() === co.id_number.trim()) ||
+                    (spOwner.owner_name_ar && co.owner_name_ar && spOwner.owner_name_ar.trim() === co.owner_name_ar.trim())
+                );
+                
+                // ✅ دمج البيانات: نستخدم phone و email من Contract إذا كانت موجودة، وإلا من SitePlan
+                return {
+                  ...spOwner,
+                  phone: matchingOwner?.phone || spOwner.phone || "",
+                  email: matchingOwner?.email || spOwner.email || "",
+                };
+              });
+              return {
+                ...prev,
+                owners: mergedOwners,
+              };
+            });
+          } else {
+            // ✅ إذا لم يكن هناك owners في SitePlan، نتأكد من أن owners array فارغ
+            setForm((prev) => ({
+              ...prev,
+              owners: Array.isArray(prev.owners) ? prev.owners : [],
+            }));
           }
         }
         authorizedOwnerLoadedOnceRef.current = true;
@@ -1096,7 +1092,8 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
           </h5>
           {(() => {
             // ✅ تصفية الملاك لعرض المالك المفوض فقط
-            const authorizedOwners = form.owners?.filter(o => o.is_authorized === true) || [];
+            const ownersArray = Array.isArray(form.owners) ? form.owners : [];
+            const authorizedOwners = ownersArray.filter(o => o.is_authorized === true);
             
             if (authorizedOwners.length === 0) {
               return (
@@ -1110,7 +1107,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
               <div>
                 {authorizedOwners.map((o, i) => {
                   // ✅ البحث عن index الأصلي للمالك في form.owners لتحديث البيانات بشكل صحيح
-                  const originalIndex = form.owners.findIndex(owner => 
+                  const originalIndex = ownersArray.findIndex(owner => 
                     owner.id_number === o.id_number && owner.owner_name_ar === o.owner_name_ar
                   );
                   
@@ -1162,7 +1159,8 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
                               type="text"
                               value={o.owner_name_en || ""}
                               onChange={(e) => {
-                                const updated = [...form.owners];
+                                const ownersArray = Array.isArray(form.owners) ? form.owners : [];
+                                const updated = [...ownersArray];
                                 if (originalIndex !== -1) {
                                   updated[originalIndex] = { ...updated[originalIndex], owner_name_en: e.target.value };
                                   setF("owners", updated);
@@ -1239,11 +1237,12 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
                                 const digits = e.target.value.replace(/\D/g, "");
                                 const trimmed = digits.replace(/^0+/, "").slice(0, 9);
                                 const formatted = trimmed ? `+971${trimmed}` : "";
-                              const updated = [...form.owners];
-                              if (originalIndex !== -1) {
-                                updated[originalIndex] = { ...updated[originalIndex], phone: formatted };
-                                setF("owners", updated);
-                              }
+                                const ownersArray = Array.isArray(form.owners) ? form.owners : [];
+                                const updated = [...ownersArray];
+                                if (originalIndex !== -1) {
+                                  updated[originalIndex] = { ...updated[originalIndex], phone: formatted };
+                                  setF("owners", updated);
+                                }
                             }}
                               placeholder={t("phone_placeholder") || "أدخل رقم الهاتف"}
                               inputMode="numeric"
@@ -1270,7 +1269,8 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
                               type="email"
                               value={o.email || ""}
                               onChange={(e) => {
-                                const updated = [...form.owners];
+                                const ownersArray = Array.isArray(form.owners) ? form.owners : [];
+                                const updated = [...ownersArray];
                                 if (originalIndex !== -1) {
                                   updated[originalIndex] = { ...updated[originalIndex], email: e.target.value };
                                   setF("owners", updated);

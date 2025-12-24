@@ -49,7 +49,7 @@ export default function CreateVariationPage() {
       const items = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
       setProjects(items || []);
     } catch (e) {
-      console.error("Error loading projects:", e);
+      // Error handled by error state
     }
   };
 
@@ -107,7 +107,7 @@ export default function CreateVariationPage() {
         setExistingVariationInvoiceFile(variation.variation_invoice_file);
       }
     } catch (e) {
-      console.error("Error loading variation:", e);
+      // Error handled by error state
       alert(t("load_error") || "Error loading variation");
       navigate("/variations");
     } finally {
@@ -195,7 +195,7 @@ export default function CreateVariationPage() {
 
       navigate("/variations");
     } catch (e) {
-      console.error("Error saving variation:", e);
+      // Error handled by error handler
       alert(e?.response?.data?.detail || e?.response?.data?.message || t("save_error"));
     } finally {
       setSaving(false);

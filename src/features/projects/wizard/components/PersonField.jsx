@@ -1,5 +1,5 @@
 // مكون موحد لحقل الاستشاري أو المقاول مع البحث
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import CreatableSelect from "react-select/creatable";
 import Field from "../../../../components/forms/Field";
@@ -9,6 +9,14 @@ import { loadSavedList, saveToList } from "../../../../utils/localStorage";
 import { formatUAEPhone } from "../../../../utils/inputFormatters";
 import { api } from "../../../../services/api";
 import { FaPlus } from "react-icons/fa";
+
+// ✅ Cache للاستشاريين من قاعدة البيانات (shared across all PersonField instances)
+const consultantsCache = {
+  data: [],
+  timestamp: null,
+  loading: false,
+  CACHE_DURATION: 5 * 60 * 1000, // 5 دقائق
+};
 
 export default function PersonField({
   type = "consultant", // "consultant" or "contractor"
@@ -35,70 +43,102 @@ export default function PersonField({
   const [dbConsultants, setDbConsultants] = useState([]); // الاستشاريين من قاعدة البيانات
   const [loadingConsultants, setLoadingConsultants] = useState(false);
 
-  // ✅ جلب الاستشاريين من قاعدة البيانات (للاستشاري فقط)
+  // ✅ جلب الاستشاريين من قاعدة البيانات (للاستشاري فقط) مع caching
   useEffect(() => {
-    if (type === "consultant" && !isView) {
-      loadConsultantsFromDB();
+    if (type !== "consultant" || isView) {
+      return;
     }
-  }, [type, isView]);
 
-  const loadConsultantsFromDB = async () => {
-    setLoadingConsultants(true);
-    try {
-      const { data: projects } = await api.get("projects/");
-      const items = Array.isArray(projects) ? projects : (projects?.results || projects?.items || projects?.data || []);
+    // ✅ التحقق من الـ cache أولاً
+    const now = Date.now();
+    const isCacheValid = 
+      consultantsCache.data.length > 0 && 
+      consultantsCache.timestamp && 
+      (now - consultantsCache.timestamp) < consultantsCache.CACHE_DURATION;
+
+    if (isCacheValid) {
+      // ✅ استخدام البيانات من الـ cache مباشرة
+      setDbConsultants(consultantsCache.data);
+      return;
+    }
+
+    // ✅ إذا كان هناك تحميل جاري، ننتظر
+    if (consultantsCache.loading) {
+      return;
+    }
+
+    const loadConsultantsFromDB = async () => {
+      consultantsCache.loading = true;
+      setLoadingConsultants(true);
       
-      const consultantsMap = new Map();
+      try {
+        const { data: projects } = await api.get("projects/");
+        const items = Array.isArray(projects) ? projects : (projects?.results || projects?.items || projects?.data || []);
+        
+        const consultantsMap = new Map();
 
-      await Promise.all(
-        items.map(async (p) => {
-          const projectId = p.id;
-          try {
-            const { data: lic } = await api.get(`projects/${projectId}/license/`);
-            const firstL = Array.isArray(lic) ? lic[0] : null;
+        // ✅ تحسين: استخدام Promise.allSettled بدلاً من Promise.all لتجنب فشل كل الطلبات إذا فشل واحد
+        const results = await Promise.allSettled(
+          items.map(async (p) => {
+            const projectId = p.id;
+            if (!projectId) return null;
             
-            if (firstL) {
-              // استشاري التصميم - نفس المنطق في ConsultantsPage
-              if (firstL.design_consultant_name) {
-                const key = firstL.design_consultant_name.toLowerCase().trim();
-                if (!consultantsMap.has(key)) {
-                  consultantsMap.set(key, {
-                    name: firstL.design_consultant_name,
-                    name_en: firstL.design_consultant_name_en || "",
-                    license: firstL.design_consultant_license_no || "",
-                  });
+            try {
+              const { data: lic } = await api.get(`projects/${projectId}/license/`);
+              const firstL = Array.isArray(lic) ? lic[0] : null;
+              
+              if (firstL) {
+                // استشاري التصميم - نفس المنطق في ConsultantsPage
+                if (firstL.design_consultant_name) {
+                  const key = firstL.design_consultant_name.toLowerCase().trim();
+                  if (!consultantsMap.has(key)) {
+                    consultantsMap.set(key, {
+                      name: firstL.design_consultant_name,
+                      name_en: firstL.design_consultant_name_en || "",
+                      license: firstL.design_consultant_license_no || "",
+                    });
+                  }
                 }
-              }
 
-              // استشاري الإشراف (إذا كان مختلف) - نفس المنطق في ConsultantsPage
-              if (firstL.supervision_consultant_name && 
-                  firstL.supervision_consultant_name !== firstL.design_consultant_name) {
-                const key = firstL.supervision_consultant_name.toLowerCase().trim();
-                if (!consultantsMap.has(key)) {
-                  consultantsMap.set(key, {
-                    name: firstL.supervision_consultant_name,
-                    name_en: firstL.supervision_consultant_name_en || "",
-                    license: firstL.supervision_consultant_license_no || "",
-                  });
+                // استشاري الإشراف (إذا كان مختلف) - نفس المنطق في ConsultantsPage
+                if (firstL.supervision_consultant_name && 
+                    firstL.supervision_consultant_name !== firstL.design_consultant_name) {
+                  const key = firstL.supervision_consultant_name.toLowerCase().trim();
+                  if (!consultantsMap.has(key)) {
+                    consultantsMap.set(key, {
+                      name: firstL.supervision_consultant_name,
+                      name_en: firstL.supervision_consultant_name_en || "",
+                      license: firstL.supervision_consultant_license_no || "",
+                    });
+                  }
                 }
               }
+            } catch (e) {
+              // Silent error - بعض المشاريع قد لا تحتوي على رخص
             }
-          } catch (e) {}
-        })
-      );
+            return null;
+          })
+        );
 
-      const consultantsList = Array.from(consultantsMap.values()).sort((a, b) => 
-        a.name.localeCompare(b.name, isAR ? "ar" : "en")
-      );
+        const consultantsList = Array.from(consultantsMap.values()).sort((a, b) => 
+          a.name.localeCompare(b.name, isAR ? "ar" : "en")
+        );
 
-      setDbConsultants(consultantsList);
-    } catch (e) {
-      console.error("Error loading consultants from DB:", e);
-      setDbConsultants([]);
-    } finally {
-      setLoadingConsultants(false);
-    }
-  };
+        // ✅ حفظ في الـ cache
+        consultantsCache.data = consultantsList;
+        consultantsCache.timestamp = Date.now();
+        setDbConsultants(consultantsList);
+      } catch (e) {
+        console.error("Error loading consultants from DB:", e);
+        setDbConsultants([]);
+      } finally {
+        consultantsCache.loading = false;
+        setLoadingConsultants(false);
+      }
+    };
+    
+    loadConsultantsFromDB();
+  }, [type, isView, isAR]);
 
   // ✅ استخدام فقط الاستشاريين من قاعدة البيانات (نفس منطق ConsultantsPage)
   const allConsultants = useMemo(() => {
@@ -126,6 +166,16 @@ export default function PersonField({
       (c) => c.name.toLowerCase().trim() === nameValue.toLowerCase().trim()
     );
   }, [allConsultants, nameValue, type]);
+
+  // ✅ تحسين البحث - البحث في أي جزء من الاسم
+  const filteredList = useMemo(() => {
+    if (!nameValue) return savedList;
+    const searchTerm = nameValue.toLowerCase();
+    return savedList.filter((c) =>
+      c.name.toLowerCase().includes(searchTerm) ||
+      (c.license && c.license.toLowerCase().includes(searchTerm))
+    );
+  }, [savedList, nameValue]);
 
   const namePlaceholder = type === "consultant" 
     ? t("consultant_name_placeholder") || "اكتب أو ابحث عن اسم الاستشاري"
@@ -162,16 +212,6 @@ export default function PersonField({
     );
   }
 
-  // ✅ تحسين البحث - البحث في أي جزء من الاسم
-  const filteredList = useMemo(() => {
-    if (!nameValue) return savedList;
-    const searchTerm = nameValue.toLowerCase();
-    return savedList.filter((c) =>
-      c.name.toLowerCase().includes(searchTerm) ||
-      (c.license && c.license.toLowerCase().includes(searchTerm))
-    );
-  }, [savedList, nameValue]);
-
   // ✅ إضافة استشاري جديد إذا لم يكن موجوداً
   const handleAddNew = () => {
     if (!nameValue || !licenseValue) return;
@@ -189,7 +229,7 @@ export default function PersonField({
     saveToList(storageKey, newItem);
     setSavedList(loadSavedList(storageKey)); // ✅ إعادة تحميل القائمة المحدثة
     
-    // ✅ إضافة الاستشاري الجديد إلى قائمة قاعدة البيانات المحلية
+    // ✅ إضافة الاستشاري الجديد إلى قائمة قاعدة البيانات المحلية والـ cache
     if (type === "consultant") {
       setDbConsultants((prev) => {
         const exists = prev.some(
@@ -197,7 +237,11 @@ export default function PersonField({
                  c.license === licenseValue
         );
         if (!exists) {
-          return [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
+          const updated = [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
+          // ✅ تحديث الـ cache أيضاً
+          consultantsCache.data = updated;
+          consultantsCache.timestamp = Date.now();
+          return updated;
         }
         return prev;
       });
@@ -468,7 +512,11 @@ export default function PersonField({
                     (c) => c.name.toLowerCase().trim() === newName.toLowerCase().trim()
                   );
                   if (!exists) {
-                    return [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
+                    const updated = [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
+                    // ✅ تحديث الـ cache أيضاً
+                    consultantsCache.data = updated;
+                    consultantsCache.timestamp = Date.now();
+                    return updated;
                   }
                   return prev;
                 });

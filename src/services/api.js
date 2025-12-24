@@ -36,25 +36,80 @@ async function ensureCsrf() {
 
 api.interceptors.request.use(async (config) => {
   const method = (config.method || "get").toLowerCase();
-  if (
-    ["post", "put", "patch", "delete"].includes(method) &&
-    !getCookie("csrftoken")
-  ) {
-    await ensureCsrf();
+  
+  // ✅ إضافة JWT token من localStorage (إذا كان موجوداً)
+  const token = localStorage.getItem('access_token');
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  } else if (!token && import.meta.env.DEV) {
+    // ✅ تحذير في development mode إذا لم يكن هناك token
+    console.warn('[API] No access_token found in localStorage for request:', config.method?.toUpperCase(), config.url);
   }
-  const csrftoken = getCookie("csrftoken") || getCookie("CSRF-TOKEN");
-  if (csrftoken) {
-    config.headers["X-CSRFToken"] = csrftoken;
-    config.headers["X-CSRF-Token"] = csrftoken;
+  
+  // ✅ محاولة الحصول على CSRF token قبل الطلبات التي تحتاجها
+  if (["post", "put", "patch", "delete"].includes(method)) {
+    // ✅ محاولة الحصول على CSRF token أولاً
+    let csrftoken = getCookie("csrftoken") || getCookie("CSRF-TOKEN");
+    
+    // ✅ إذا لم يكن موجوداً، نحاول الحصول عليه
+    if (!csrftoken) {
+      try {
+        await ensureCsrf();
+        csrftoken = getCookie("csrftoken") || getCookie("CSRF-TOKEN");
+      } catch (error) {
+        // ✅ إذا فشل، نكمل بدون CSRF token (لأننا نستخدم JWT)
+        // CSRF token مطلوب فقط للـ session-based auth، لكننا نستخدم JWT
+      }
+    }
+    
+    // ✅ إضافة CSRF token إذا كان موجوداً
+    if (csrftoken) {
+      config.headers["X-CSRFToken"] = csrftoken;
+      config.headers["X-CSRF-Token"] = csrftoken;
+    }
   }
+  
   return config;
 });
 
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
     const status = err?.response?.status;
     const data = err?.response?.data;
+    const originalRequest = err.config;
+    
+    // ✅ معالجة 401 - محاولة refresh token
+    if (status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (refreshToken) {
+          // ✅ استخدام axios مباشرة لتجنب loop
+          const refreshResponse = await axios.post(
+            `${isDev ? "/api/" : `${ROOT}/api/`}auth/token/refresh/`,
+            { refresh: refreshToken },
+            { withCredentials: true }
+          );
+          
+          const { access } = refreshResponse.data;
+          localStorage.setItem('access_token', access);
+          originalRequest.headers.Authorization = `Bearer ${access}`;
+          
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        // ✅ إذا فشل refresh، نخرج المستخدم
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('permissions');
+        localStorage.removeItem('tenant_theme');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
+    }
     
     // ✅ معالجة HTML errors - تحويلها إلى رسالة خطأ مناسبة
     if (data && typeof data === "string" && (data.trim().startsWith("<!DOCTYPE") || data.trim().startsWith("<html"))) {
@@ -80,14 +135,17 @@ api.interceptors.response.use(
       };
     }
     
-    console.groupCollapsed(
-      `[API ERROR] ${status ?? "?"} ${err.config?.method?.toUpperCase()} ${
-        err.config?.url
-      }`
-    );
-    console.log("Request:", err.config);
-    console.log("Response:", err.response?.data || data);
-    console.groupEnd();
+    // Log errors only in development
+    if (import.meta.env.DEV) {
+      console.groupCollapsed(
+        `[API ERROR] ${status ?? "?"} ${err.config?.method?.toUpperCase()} ${
+          err.config?.url
+        }`
+      );
+      console.log("Request:", err.config);
+      console.log("Response:", err.response?.data || data);
+      console.groupEnd();
+    }
     return Promise.reject(err);
   }
 );

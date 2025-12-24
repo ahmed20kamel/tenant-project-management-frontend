@@ -61,7 +61,7 @@ export default function VariationsPage() {
       
       setVariations(allVariations);
     } catch (e) {
-      console.error("Error loading variations:", e);
+      // Error handled by error state
       setVariations([]);
       showToast("error", t("load_error") || "Error loading variations");
     } finally {
@@ -143,7 +143,7 @@ export default function VariationsPage() {
       setConfirmOpen(false);
       setTargetVariation(null);
     } catch (e) {
-      console.error("Delete failed:", e);
+      // Error handled by error handler
       showToast("error", t("delete_error") || "Error deleting variation");
     } finally {
       setDeletingId(null);
@@ -170,7 +170,7 @@ export default function VariationsPage() {
         await api.delete(`projects/${variation.project}/variations/${id}/`);
         ok += 1;
       } catch (e) {
-        console.error("Bulk delete failed for id", id, e);
+        // Silent error handling
         fail += 1;
       }
     }

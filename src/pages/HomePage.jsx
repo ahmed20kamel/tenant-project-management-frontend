@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
@@ -256,7 +256,7 @@ const BarChart = ({ data, labels, title, color = "var(--primary)" }) => {
   );
 };
 
-export default function HomePage() {
+const HomePage = memo(function HomePage() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
@@ -323,12 +323,17 @@ export default function HomePage() {
     setStatsLoading(true);
     setStatsError("");
     try {
-      const { data } = await api.get("projects/");
+      console.log("🔄 Loading projects from API with included relations...");
+      // ✅ استخدام include parameter لتقليل عدد API calls من N+1 إلى 1 فقط
+      const { data } = await api.get("projects/?include=siteplan,license,contract,awarding");
+      console.log("✅ API Response:", data);
+      
       const items = Array.isArray(data)
         ? data
         : data?.results || data?.items || data?.data || [];
 
       const safeProjects = items || [];
+      console.log(`📊 Found ${safeProjects.length} projects`);
       setProjects(safeProjects);
 
       const ownersMap = new Map();
@@ -354,45 +359,16 @@ export default function HomePage() {
       const projectRowsLocal = [];
       const financialRows = [];
 
-      await Promise.all(
-        safeProjects.map(async (p) => {
-          const projectId = p.id;
-          if (!projectId) return;
+      // ✅ البيانات موجودة بالفعل في response - لا حاجة لـ Promise.all
+      safeProjects.forEach((p) => {
+        const projectId = p.id;
+        if (!projectId) return;
 
-          let siteplanData = null;
-          let licenseData = null;
-          let contractData = null;
-          let awardingData = null;
-
-          try {
-            const { data: sp } = await api.get(`projects/${projectId}/siteplan/`);
-            siteplanData = Array.isArray(sp) ? sp[0] : sp || null;
-          } catch (e) {}
-
-          try {
-            const { data: lic } = await api.get(
-              `projects/${projectId}/license/`
-            );
-            licenseData = Array.isArray(lic) ? lic[0] : lic || null;
-          } catch (e) {}
-
-          try {
-            const { data: contract } = await api.get(
-              `projects/${projectId}/contract/`
-            );
-            contractData = Array.isArray(contract)
-              ? contract[0]
-              : contract || null;
-          } catch (e) {}
-
-          try {
-            const { data: award } = await api.get(
-              `projects/${projectId}/awarding/`
-            );
-            awardingData = Array.isArray(award)
-              ? award[0]
-              : award || null;
-          } catch (e) {}
+        // ✅ استخدام البيانات من include بدلاً من API calls منفصلة
+        const siteplanData = p.siteplan_data || null;
+        const licenseData = p.license_data || null;
+        const contractData = p.contract_data || null;
+        const awardingData = p.awarding_data || null;
 
           if (siteplanData) withSiteplan += 1;
           if (licenseData) withLicense += 1;
@@ -567,8 +543,7 @@ export default function HomePage() {
               zone: zoneLabel,
             });
           }
-        })
-      );
+      });
 
       const ownersArray = Array.from(ownersMap.values());
       const consultantsArray = Array.from(consultantsMap.values());
@@ -599,11 +574,38 @@ export default function HomePage() {
       // ✅ تم إزالة setContractorRows - المقاول = الشركة نفسها
       setProjectFinancialRows(financialRows);
     } catch (err) {
+      console.error("❌ Error loading projects:", err);
+      console.error("❌ Error response:", err?.response);
       const msg =
         err?.response?.data
           ? JSON.stringify(err.response.data, null, 2)
           : err?.message || t("unknown_error");
       setStatsError(msg);
+      // ✅ إرجاع قائمة فارغة في حالة الخطأ
+      setProjects([]);
+      setProjectRows([]);
+      setOwnerRows([]);
+      setConsultantRows([]);
+      setProjectFinancialRows([]);
+      setMetrics({
+        totalProjects: 0,
+        totalOwners: 0,
+        totalConsultants: 0,
+        withSiteplan: 0,
+        withLicense: 0,
+        withContract: 0,
+        withAwarding: 0,
+        contractTotalNoVat: 0,
+        contractTotalWithVat: 0,
+        consultantTotalNoVat: 0,
+        consultantTotalWithVat: 0,
+        actualTotalNoVat: 0,
+        actualTotalWithVat: 0,
+        actualBankNoVat: 0,
+        actualBankWithVat: 0,
+        actualOwnerNoVat: 0,
+        actualOwnerWithVat: 0,
+      });
     } finally {
       setStatsLoading(false);
     }
@@ -1018,25 +1020,6 @@ export default function HomePage() {
 
     </PageLayout>
   );
-}
+});
 
-// دوال مساعدة رقمية بسيطة (مأخوذة من منطق ملخص العقد المالي)
-function safeNumber(v) {
-  if (v === undefined || v === null || v === "" || Number.isNaN(v)) return 0;
-  const x = parseFloat(String(v).replace(/[^\d.+-]/g, ""));
-  return Number.isFinite(x) ? x : 0;
-}
-
-function splitConsultantFee(gross, pct) {
-  const g = safeNumber(gross);
-  const r = safeNumber(pct);
-  if (g <= 0 || r <= 0) return { fee: 0, net: g };
-  const fee = Math.round(g * (r / (100 + r)));
-  return { fee, net: g - fee };
-}
-
-function withVat(amount) {
-  const v = safeNumber(amount);
-  const vat = Math.round(v * 0.05);
-  return v + vat;
-}
+export default HomePage;

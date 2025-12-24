@@ -34,8 +34,6 @@ export default function SitePlanStep({
   onCreateProject, // ✅ callback لإنشاء المشروع بعد الحفظ
 }) {
 
-  console.log("===== SitePlanStep MOUNTED =====");
-  console.log("projectId:", projectId);
 
   const { t, i18n } = useTranslation();
   const isAR = /^ar\b/i.test(i18n.language || "");
@@ -56,7 +54,6 @@ export default function SitePlanStep({
     updateOwner,
   } = useSitePlan(projectId, setup);
 
-  console.log("Initial owners from useSitePlan:", owners);
 
   // ----- View Mode Sync -----
   const [viewMode, setViewMode] = useState(() => {
@@ -65,13 +62,11 @@ export default function SitePlanStep({
   });
 
   useEffect(() => {
-    console.log("View mode changed:", { isViewProp, isViewState });
     if (isViewProp !== undefined) setViewMode(isViewProp === true);
     else setViewMode(isViewState === true);
   }, [isViewProp, isViewState]);
 
   const updateViewMode = (next) => {
-    console.log("updateViewMode:", next);
     setViewMode(next);
     if (isViewProp === undefined) setIsView(next);
   };
@@ -86,8 +81,6 @@ export default function SitePlanStep({
   const [isUploading, setIsUploading] = useState(false); // حالة الرفع
   const [contractOwners, setContractOwners] = useState([]); // ✅ بيانات الملاك من العقد
 
-  console.log("OwnerFileUrls:", ownerFileUrls);
-  console.log("OwnerFileNames:", ownerFileNames);
 
   // توليد رقم المعاملة تلقائياً عند تغيير تاريخ المعاملة
   // السنة تذهب تلقائياً بعد "/" في رقم المعاملة
@@ -142,7 +135,6 @@ export default function SitePlanStep({
   useEffect(() => {
     const zoneValues = (ZONES[form.municipality] || []).map((z) => z.value);
     if (form.zone && !zoneValues.includes(form.zone)) {
-      console.warn("Zone reset because it's not valid for this municipality.");
       setF("zone", "");
     }
   }, [form.municipality]);
@@ -153,7 +145,6 @@ export default function SitePlanStep({
   useEffect(() => {
     if (!projectId) return;
 
-    console.log("Loading remote files for project:", projectId);
 
     let mounted = true;
 
@@ -164,7 +155,6 @@ export default function SitePlanStep({
 
         if (Array.isArray(data) && data.length > 0) {
           const siteplanData = data[0];
-          console.log("Loaded siteplan:", siteplanData);
 
           // Application file
           if (siteplanData.application_file) {
@@ -188,14 +178,13 @@ export default function SitePlanStep({
               }
             });
 
-            console.log("Loaded owner file URLs:", urls);
 
             setOwnerFileUrls(urls);
             setOwnerFileNames(names);
           }
         }
       } catch (e) {
-        console.error("Error loading siteplan files:", e);
+        // Silent error handling
       }
     })();
 
@@ -216,12 +205,11 @@ export default function SitePlanStep({
           if (contractData.owners && Array.isArray(contractData.owners) && contractData.owners.length > 0) {
             setContractOwners(contractData.owners);
             if (process.env.NODE_ENV === "development") {
-              console.log("✅ Loaded contract owners:", contractData.owners);
             }
           }
         }
       } catch (e) {
-        console.error("Error loading contract owners:", e);
+        // Silent error handling
       }
     })();
   }, [projectId, viewMode]);
@@ -289,7 +277,6 @@ export default function SitePlanStep({
       // ✅ إذا كان null أو undefined، لا نضيف URL (سيتم حذف الملف)
     });
 
-    console.log("Updating ownerFileUrls after owners changed:", currentUrls);
 
     setOwnerFileUrls(currentUrls);
     setOwnerFileNames(currentNames);
@@ -298,8 +285,6 @@ export default function SitePlanStep({
   // 🔥 buildPayload — أهم جزء في الخطوة كلها
   // -----------------------------------------------------
   const buildPayload = () => {
-    console.log("===== Building Payload =====");
-
     const application_date_api = toApiDateUnified(form.application_date);
     const allocation_date_api = toApiDateUnified(form.allocation_date);
 
@@ -308,8 +293,6 @@ export default function SitePlanStep({
       application_date: application_date_api || undefined,
       allocation_date: allocation_date_api || undefined,
     };
-
-    console.log("Normalized Form:", normalized);
 
     // ------------------------------
     // 🔴 Check: allocation date < application date
@@ -320,7 +303,6 @@ export default function SitePlanStep({
 
       if (alloc >= app) {
         const msg = t("errors.allocation_before_application");
-        console.error("Date Validation Error:", msg);
         throw new Error(msg);
       }
     }
@@ -330,10 +312,7 @@ export default function SitePlanStep({
     // ------------------------------
     const sum = owners.reduce((s, o) => s + (parseFloat(o.share_percent) || 0), 0);
 
-    console.log("Owners Shares Sum:", sum);
-
     if (Math.round(sum) !== 100) {
-      console.error("Share percent validation failed:", sum);
       throw new Error(t("errors.owners_share_sum_100"));
     }
 
@@ -342,7 +321,6 @@ export default function SitePlanStep({
     // ------------------------------
     const authorizedOwner = owners.find((o) => o.is_authorized === true);
     if (!authorizedOwner) {
-      console.error("No authorized owner selected");
       throw new Error(t("errors.authorized_owner_required") || "يجب تحديد المالك المفوض");
     }
 
@@ -351,7 +329,6 @@ export default function SitePlanStep({
     // ------------------------------
     owners.forEach((o, idx) => {
       if (!o.owner_name_ar?.trim() && !o.owner_name_en?.trim()) {
-        console.error("Owner missing both AR/EN names:", o);
         throw new Error(t("errors.owner_name_bilingual_required", { idx: idx + 1 }));
       }
     });
@@ -386,11 +363,9 @@ export default function SitePlanStep({
 
       const idx = validOwnerIndex++;
 
-      console.log(`Building owner ${idx}:`, o);
 
       // id مهم جدا جدا - تحويل إلى string للتأكد من الإرسال الصحيح
       if (o.id) {
-        console.log(`Appending owner[${idx}][id]:`, o.id);
         fd.append(`owners[${idx}][id]`, String(o.id));
       }
 
@@ -420,18 +395,14 @@ export default function SitePlanStep({
         // تسمية الملف باسم موحد حسب نص الحقل
         const labelText = t("id_attachment") || "إرفاق الهوية";
         const renamedFile = renameFileForUpload(o.id_attachment, 'id_attachment', idx, labelText);
-        console.log(`Uploading NEW file for owner ${idx}: ${o.id_attachment.name} -> ${renamedFile.name}`);
         fd.append(`owners[${idx}][id_attachment]`, renamedFile, renamedFile.name);
       } else if (o.id_attachment && typeof o.id_attachment === "string") {
         // ✅ إذا كان ملف موجود (URL string)، لا نرسل شيء - الباك إند سيحافظ عليه
-        console.log(`Keeping existing file for owner ${idx}:`, o.id_attachment);
       } else if (o.id_attachment === null) {
         // ✅ إذا كان null صريحاً، نرسل إشارة لحذف الملف
-        console.log(`Removing file for owner ${idx}`);
         fd.append(`owners[${idx}][id_attachment_delete]`, "true");
       } else {
         // ✅ إذا كان undefined، نحافظ على الملف الموجود (لا نرسل شيء)
-        console.log(`No file change for owner ${idx}`);
       }
     });
 
@@ -444,16 +415,13 @@ export default function SitePlanStep({
       // تسمية الملف باسم موحد حسب نص الحقل
       const labelText = t("attach_land_site_plan") || "إرفاق مخطط الأرض";
       const renamedFile = renameFileForUpload(form.application_file, 'application_file', 0, labelText);
-      console.log("Uploading NEW application file:", form.application_file.name, "->", renamedFile.name);
       fd.append("application_file", renamedFile, renamedFile.name);
     } else if (form.application_file && typeof form.application_file === 'string') {
       // إذا كان URL (ملف مرفوع مسبقاً في الخلفية)، لا نرسل شيء - الباك إند سيحافظ عليه
       // أو يمكن إرسال URL كحقل نصي إذا كان الباك إند يدعم ذلك
-      console.log("File already uploaded in background, skipping:", form.application_file);
       // لا نرسل شيء - الملف مرفوع بالفعل
     }
 
-    console.log("===== Payload Build DONE =====");
     return fd;
   };
 
@@ -482,7 +450,7 @@ export default function SitePlanStep({
         setUploadProgress(100);
         setTimeout(() => setUploadProgress(0), 1000);
       } catch (err) {
-        console.error("Error in onCreateProject:", err);
+        // Error handled by caller
         setErrorMsg(err?.message || t("unknown_error"));
         setIsUploading(false);
         setUploadProgress(0);
@@ -493,7 +461,7 @@ export default function SitePlanStep({
     // ✅ إذا كان مشروع موجود، نحفظ في DB
     if (!projectId) {
       const msg = t("open_specific_project_to_save");
-      console.error(msg);
+      // Error message shown to user
       setErrorMsg(msg);
       return;
     }
@@ -503,7 +471,7 @@ export default function SitePlanStep({
       setIsUploading(true);
       setUploadProgress(0);
 
-      console.log("Saving SitePlan:", {
+      console.log({
         projectId,
         existingId,
         ownersCount: owners.length,
@@ -513,7 +481,6 @@ export default function SitePlanStep({
       let response;
 
       if (existingId) {
-        console.log("PATCH → Updating SitePlan ID:", existingId);
         response = await api.patch(`projects/${projectId}/siteplan/${existingId}/`, payload, {
           onUploadProgress: (progressEvent) => {
             if (progressEvent.total) {
@@ -525,7 +492,6 @@ export default function SitePlanStep({
           },
         });
       } else {
-        console.log("POST → Creating new SitePlan");
         response = await api.post(`projects/${projectId}/siteplan/`, payload, {
           onUploadProgress: (progressEvent) => {
             if (progressEvent.total) {
@@ -537,12 +503,10 @@ export default function SitePlanStep({
           },
         });
         if (response?.data?.id) {
-          console.log("Created SitePlan with ID:", response.data.id);
           setExistingId(response.data.id);
         }
       }
 
-      console.log("SAVE SUCCESS:", response?.data);
 
       // Clear error and reset upload state
       setErrorMsg("");
@@ -554,14 +518,12 @@ export default function SitePlanStep({
       // -----------------------------------------------------
       // 🔥 Reload latest siteplan from backend
       // -----------------------------------------------------
-      console.log("Reloading remote SitePlan to sync UI…");
 
       try {
         const { data } = await api.get(`projects/${projectId}/siteplan/`);
 
         if (Array.isArray(data) && data.length > 0) {
           const siteplanData = data[0];
-          console.log("Reloaded siteplan:", siteplanData);
 
           // Application file
           if (siteplanData.application_file) {
@@ -596,7 +558,6 @@ export default function SitePlanStep({
                   : null,
             }));
 
-            console.log("Updated owners (from server):", updatedOwners);
 
             setOwners(updatedOwners);
 
@@ -618,31 +579,27 @@ export default function SitePlanStep({
             setOwnerFileUrls(urls);
             setOwnerFileNames(names);
 
-            console.log("Updated owner file URLs:", urls);
           }
         }
       } catch (e) {
-        console.error("Error reloading siteplan:", e);
+        // Silent error handling
       }
 
       // Switch to view mode
       updateViewMode(true);
 
-      console.log("Dispatching: siteplan-owners-updated");
       window.dispatchEvent(
         new CustomEvent("siteplan-owners-updated", { detail: { projectId } })
       );
 
       // If wizard has next step
       if (typeof onNext === "function") {
-        console.log("Calling onNext()");
         onNext();
       }
 
-      console.log("========== SAVE END ==========");
 
     } catch (err) {
-      console.error("SAVE ERROR RAW:", err);
+      // Error handled by error handler
       // إعادة تعيين حالة الرفع عند الخطأ
       setIsUploading(false);
       setUploadProgress(0);

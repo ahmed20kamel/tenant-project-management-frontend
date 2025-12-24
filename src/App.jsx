@@ -1,84 +1,101 @@
 // src/App.jsx
+import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/ui/ProtectedRoute";
+import { CircularProgress, Box } from "@mui/material";
 
-// ====== Public Pages (صفحات عامة) ======
-import LandingPage from "./pages/public/LandingPage";
-import PricingPage from "./pages/public/PricingPage";
-import CompanyRegistrationPage from "./features/auth/pages/CompanyRegistrationPage";
+// ✅ Loading component للـ lazy loading
+const LoadingFallback = () => (
+  <Box
+    sx={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '50vh',
+    }}
+  >
+    <CircularProgress />
+  </Box>
+);
 
-// ====== Auth Pages (صفحات المصادقة) ======
-import AdminLoginPage from "./features/admin/pages/AdminLoginPage";
-import CompanyLoginPage from "./features/auth/pages/CompanyLoginPage";
-import OnboardingWizardPage from "./features/auth/pages/OnboardingWizardPage";
+// ====== Public Pages (صفحات عامة) - Lazy Loading ======
+const LandingPage = lazy(() => import("./pages/public/LandingPage"));
+const PricingPage = lazy(() => import("./pages/public/PricingPage"));
+const CompanyRegistrationPage = lazy(() => import("./features/auth/pages/CompanyRegistrationPage"));
 
-// ====== Dashboard Pages (صفحات لوحة التحكم) ======
-import HomePage from "./pages/HomePage";
-import AdminDashboardPage from "./features/admin/pages/AdminDashboardPage";
+// ====== Auth Pages (صفحات المصادقة) - Lazy Loading ======
+const AdminLoginPage = lazy(() => import("./features/admin/pages/AdminLoginPage"));
+const CompanyLoginPage = lazy(() => import("./features/auth/pages/CompanyLoginPage"));
+const OnboardingWizardPage = lazy(() => import("./features/auth/pages/OnboardingWizardPage"));
 
-// ====== Admin Pages (صفحات الإدارة) ======
-import AdminTenantsPage from "./features/admin/pages/AdminTenantsPage";
-import AdminCreateCompanyPage from "./features/admin/pages/AdminCreateCompanyPage";
+// ====== Dashboard Pages (صفحات لوحة التحكم) - Lazy Loading ======
+const HomePage = lazy(() => import("./pages/HomePage"));
+const AdminDashboardPage = lazy(() => import("./features/admin/pages/AdminDashboardPage"));
 
-// ====== Company Pages (صفحات الشركة) ======
-import CompanySettingsPage from "./features/company/pages/CompanySettingsPage";
-import CompanyUsersPage from "./features/company/pages/CompanyUsersPage";
+// ====== Admin Pages (صفحات الإدارة) - Lazy Loading ======
+const AdminTenantsPage = lazy(() => import("./features/admin/pages/AdminTenantsPage"));
+const AdminCreateCompanyPage = lazy(() => import("./features/admin/pages/AdminCreateCompanyPage"));
 
-// ====== Projects Pages (صفحات المشاريع) ======
-import ProjectsPage from "./features/projects/pages/ProjectsPage";
-import ProjectView from "./features/projects/pages/ProjectView";
-import WizardPage from "./features/projects/wizard/WizardPage";
-import ViewSetup from "./features/projects/view/ViewSetup";
-import ViewSitePlan from "./features/projects/view/ViewSitePlan";
-import ViewLicense from "./features/projects/view/ViewLicense";
-import ViewContract from "./features/projects/view/ViewContract";
-import ViewAwarding from "./features/projects/view/ViewAwarding";
-import ViewSummary from "./features/projects/view/ViewSummary";
+// ====== Company Pages (صفحات الشركة) - Lazy Loading ======
+const CompanySettingsPage = lazy(() => import("./features/company/pages/CompanySettingsPage"));
+const CompanyUsersPage = lazy(() => import("./features/company/pages/CompanyUsersPage"));
 
-// ====== Payments Pages (صفحات المدفوعات) ======
-import PaymentsPage from "./features/payments/pages/PaymentsPage";
-import CreatePaymentPage from "./features/payments/pages/CreatePaymentPage";
-import ViewPaymentPage from "./features/payments/pages/ViewPaymentPage";
+// ====== Projects Pages (صفحات المشاريع) - Lazy Loading ======
+const ProjectsPage = lazy(() => import("./features/projects/pages/ProjectsPage"));
+const ProjectView = lazy(() => import("./features/projects/pages/ProjectView"));
+const WizardPage = lazy(() => import("./features/projects/wizard/WizardPage"));
+const ViewSetup = lazy(() => import("./features/projects/view/ViewSetup"));
+const ViewSitePlan = lazy(() => import("./features/projects/view/ViewSitePlan"));
+const ViewLicense = lazy(() => import("./features/projects/view/ViewLicense"));
+const ViewContract = lazy(() => import("./features/projects/view/ViewContract"));
+const ViewAwarding = lazy(() => import("./features/projects/view/ViewAwarding"));
+const ViewSummary = lazy(() => import("./features/projects/view/ViewSummary"));
 
-// ====== Variations Pages ======
-import VariationsPage from "./features/variations/pages/VariationsPage";
-import CreateVariationPage from "./features/variations/pages/CreateVariationPage";
+// ====== Payments Pages (صفحات المدفوعات) - Lazy Loading ======
+const PaymentsPage = lazy(() => import("./features/payments/pages/PaymentsPage"));
+const CreatePaymentPage = lazy(() => import("./features/payments/pages/CreatePaymentPage"));
+const ViewPaymentPage = lazy(() => import("./features/payments/pages/ViewPaymentPage"));
 
-// ====== Invoices Pages ======
-import InvoicesPage from "./features/invoices/pages/InvoicesPage";
-import InvoiceViewPage from "./features/invoices/pages/InvoiceViewPage";
-import CreateActualInvoicePage from "./features/invoices/pages/CreateActualInvoicePage";
+// ====== Variations Pages - Lazy Loading ======
+const VariationsPage = lazy(() => import("./features/variations/pages/VariationsPage"));
+const CreateVariationPage = lazy(() => import("./features/variations/pages/CreateVariationPage"));
 
-// ====== Owners Pages (صفحات الملاك) ======
-import OwnersPage from "./features/owners/pages/OwnersPage";
-import OwnerDetailPage from "./features/owners/pages/OwnerDetailPage";
-import EditOwnerPage from "./features/owners/pages/EditOwnerPage";
+// ====== Invoices Pages - Lazy Loading ======
+const InvoicesPage = lazy(() => import("./features/invoices/pages/InvoicesPage"));
+const InvoiceViewPage = lazy(() => import("./features/invoices/pages/InvoiceViewPage"));
+const CreateActualInvoicePage = lazy(() => import("./features/invoices/pages/CreateActualInvoicePage"));
 
-// ====== Consultants Pages (صفحات الاستشاريين) ======
-import ConsultantsPage from "./features/consultants/pages/ConsultantsPage";
-import ConsultantDetailPage from "./features/consultants/pages/ConsultantDetailPage";
-import EditConsultantPage from "./features/consultants/pages/EditConsultantPage";
+// ====== Owners Pages (صفحات الملاك) - Lazy Loading ======
+const OwnersPage = lazy(() => import("./features/owners/pages/OwnersPage"));
+const OwnerDetailPage = lazy(() => import("./features/owners/pages/OwnerDetailPage"));
+const EditOwnerPage = lazy(() => import("./features/owners/pages/EditOwnerPage"));
 
-// ====== Profile Pages (صفحات الملف الشخصي) ======
-import ProfilePage from "./features/profile/pages/ProfilePage";
+// ====== Consultants Pages (صفحات الاستشاريين) - Lazy Loading ======
+const ConsultantsPage = lazy(() => import("./features/consultants/pages/ConsultantsPage"));
+const ConsultantDetailPage = lazy(() => import("./features/consultants/pages/ConsultantDetailPage"));
+const EditConsultantPage = lazy(() => import("./features/consultants/pages/EditConsultantPage"));
+
+// ====== Profile Pages (صفحات الملف الشخصي) - Lazy Loading ======
+const ProfilePage = lazy(() => import("./features/profile/pages/ProfilePage"));
 
 export default function App() {
   return (
-    <Routes>
-      {/* صفحات عامة (غير محمية) */}
-      <Route path="/landing" element={<LandingPage />} />
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/pricing" element={<PricingPage />} />
-      <Route path="/register-company" element={<CompanyRegistrationPage />} />
-      
-      {/* صفحات تسجيل الدخول */}
-      <Route path="/admin/login" element={<AdminLoginPage />} />
-      <Route path="/login/:tenantSlug" element={<CompanyLoginPage />} />
-      <Route path="/login" element={<Navigate to="/" replace />} /> {/* Redirect إلى Landing Page */}
-      
-      {/* صفحة Onboarding (بدون Layout) */}
-      <Route path="/onboarding" element={<ProtectedRoute><OnboardingWizardPage /></ProtectedRoute>} />
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        {/* صفحات عامة (غير محمية) */}
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/register-company" element={<CompanyRegistrationPage />} />
+        
+        {/* صفحات تسجيل الدخول */}
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/login/:tenantSlug" element={<CompanyLoginPage />} />
+        <Route path="/login" element={<Navigate to="/" replace />} /> {/* Redirect إلى Landing Page */}
+        
+        {/* صفحة Onboarding (بدون Layout) */}
+        <Route path="/onboarding" element={<ProtectedRoute><OnboardingWizardPage /></ProtectedRoute>} />
       
       {/* جميع الصفحات الأخرى محمية */}
       <Route path="/*" element={
@@ -172,5 +189,6 @@ export default function App() {
     </Layout>
       } />
     </Routes>
+    </Suspense>
   );
 }

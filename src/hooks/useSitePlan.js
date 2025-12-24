@@ -129,7 +129,6 @@ export default function useSitePlan(projectId, setup) {
                   : null,
             }));
 
-            console.log("Loaded owners with IDs:", loadedOwners.map(o => ({ id: o.id, name: o.owner_name_ar })));
 
             setOwners(loadedOwners);
 
@@ -156,7 +155,7 @@ export default function useSitePlan(projectId, setup) {
           setExistingId(null);
         }
       } catch (err) {
-        console.error("Error loading site plan:", err);
+        // Silent error handling
         if (mounted) {
           setForm({
             ...INITIAL_FORM,

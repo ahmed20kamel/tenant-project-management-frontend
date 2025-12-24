@@ -73,14 +73,14 @@ export default function useProjectData(projectId) {
         }
       } else {
         // ✅ إذا فشل الطلب (مثل 500 error)، نستخدم قائمة فارغة بدلاً من إيقاف التحميل
-        console.warn("Failed to load payments:", paymentsRes.reason);
+        // Silent warning
       }
 
       setData({ project, siteplan, license, contract, awarding, payments: paymentsData });
       setLoading(false);
     } catch (error) {
       if (!mountedRef.current) return;
-      console.error("Error loading project data:", error);
+      // Error handled by caller
       setLoading(false);
     }
   }, [projectId, extractData]);

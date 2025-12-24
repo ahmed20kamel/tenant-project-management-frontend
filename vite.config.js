@@ -14,18 +14,29 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path, // لا نغير الـ path
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
-          });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending Request to the Target:', req.method, req.url);
-          });
-          proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-          });
+      },
+    },
+  },
+  build: {
+    // ✅ تحسينات الإنتاج
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true, // إزالة console.log في الإنتاج
+        drop_debugger: true,
+      },
+    },
+    sourcemap: false, // إزالة source maps في الإنتاج
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // ✅ تقسيم bundle لتحسين الأداء
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-mui': ['@mui/material', '@mui/icons-material'],
+          'vendor-utils': ['axios', 'date-fns', 'i18next', 'react-i18next'],
         },
       },
     },
+    chunkSizeWarningLimit: 1000, // تحذير عند تجاوز 1MB
   },
 });
