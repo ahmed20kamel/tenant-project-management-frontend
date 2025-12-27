@@ -105,50 +105,104 @@ export default function OnboardingWizardPage() {
     setLoading(true);
 
     try {
-      // Step 1: Update Profile (username, phone, avatar)
+      // ✅ Step 1: Update Profile (username, phone, avatar) + Mark onboarding as completed
+      // دمج جميع بيانات البروفايل في طلب واحد لتجنب إرسال FormData فارغ
       const profileData = new FormData();
-      if (formData.username) profileData.append('username', formData.username);
-      if (formData.phone) profileData.append('phone', formData.phone);
-      if (formData.avatar) profileData.append('avatar', formData.avatar);
       
-      // Update user profile
+      // إضافة بيانات البروفايل فقط إذا كانت موجودة
+      if (formData.username && formData.username.trim()) {
+        profileData.append('username', formData.username.trim());
+      }
+      if (formData.phone && formData.phone.trim()) {
+        profileData.append('phone', formData.phone.trim());
+      }
+      if (formData.avatar) {
+        profileData.append('avatar', formData.avatar);
+      }
+      
+      // ✅ إضافة onboarding_completed في نفس الطلب
+      profileData.append('onboarding_completed', 'true');
+      
+      // ✅ إرسال الطلب دائماً (حتى لو كان فارغاً) لأن onboarding_completed موجود دائماً
       await api.patch('auth/users/update_profile/', profileData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      // Step 2: Update Company Settings (basic info + logo + colors + contractor info)
+      // ✅ Step 2: Update Company Settings (basic info + logo + colors + contractor info)
       const settingsData = new FormData();
       
-      // Basic Company Information
-      if (formData.company_name_ar) settingsData.append('company_name', formData.company_name_ar);
-      if (formData.license_number) settingsData.append('company_license_number', formData.license_number);
-      if (formData.company_phone) settingsData.append('company_phone', formData.company_phone);
-      if (formData.company_email) settingsData.append('company_email', formData.company_email);
-      if (formData.company_address) settingsData.append('company_address', formData.company_address);
-      if (formData.company_country) settingsData.append('company_country', formData.company_country);
-      if (formData.company_city) settingsData.append('company_city', formData.company_city);
+      // ✅ Basic Company Information - الحقول المطلوبة
+      // company_name مطلوب في Backend
+      if (formData.company_name_ar && formData.company_name_ar.trim()) {
+        settingsData.append('company_name', formData.company_name_ar.trim());
+      } else {
+        // إذا لم يتم إدخال اسم الشركة، نستخدم email كاسم افتراضي
+        throw new Error(isRTL ? 'اسم الشركة (عربي) مطلوب' : 'Company name (Arabic) is required');
+      }
+      
+      // ⚠️ company_email محمي من التعديل في Backend (يتم إنشاؤه عند إنشاء الشركة)
+      // لا نرسله في Onboarding لأنه محمي
+      // if (formData.company_email && formData.company_email.trim()) {
+      //   settingsData.append('company_email', formData.company_email.trim());
+      // }
+      
+      // company_phone مطلوب في Backend
+      if (formData.company_phone && formData.company_phone.trim()) {
+        settingsData.append('company_phone', formData.company_phone.trim());
+      } else {
+        throw new Error(isRTL ? 'رقم هاتف الشركة مطلوب' : 'Company phone is required');
+      }
+      
+      // الحقول الاختيارية
+      if (formData.license_number && formData.license_number.trim()) {
+        settingsData.append('company_license_number', formData.license_number.trim());
+      }
+      if (formData.company_address && formData.company_address.trim()) {
+        settingsData.append('company_address', formData.company_address.trim());
+      }
+      if (formData.company_country && formData.company_country.trim()) {
+        settingsData.append('company_country', formData.company_country.trim());
+      }
+      if (formData.company_city && formData.company_city.trim()) {
+        settingsData.append('company_city', formData.company_city.trim());
+      }
+      if (formData.company_activity_type) {
+        settingsData.append('company_activity_type', formData.company_activity_type);
+      }
+      if (formData.company_description && formData.company_description.trim()) {
+        settingsData.append('company_description', formData.company_description.trim());
+      }
       
       // Contractor Information (المقاول = الشركة)
-      if (formData.contractor_name) settingsData.append('contractor_name', formData.contractor_name);
-      if (formData.contractor_name_en) settingsData.append('contractor_name_en', formData.contractor_name_en);
-      if (formData.contractor_license_no) settingsData.append('contractor_license_no', formData.contractor_license_no);
-      if (formData.contractor_phone) settingsData.append('contractor_phone', formData.contractor_phone);
-      if (formData.contractor_email) settingsData.append('contractor_email', formData.contractor_email);
-      if (formData.contractor_address) settingsData.append('contractor_address', formData.contractor_address);
+      if (formData.contractor_name && formData.contractor_name.trim()) {
+        settingsData.append('contractor_name', formData.contractor_name.trim());
+      }
+      if (formData.contractor_name_en && formData.contractor_name_en.trim()) {
+        settingsData.append('contractor_name_en', formData.contractor_name_en.trim());
+      }
+      if (formData.contractor_license_no && formData.contractor_license_no.trim()) {
+        settingsData.append('contractor_license_no', formData.contractor_license_no.trim());
+      }
+      if (formData.contractor_phone && formData.contractor_phone.trim()) {
+        settingsData.append('contractor_phone', formData.contractor_phone.trim());
+      }
+      if (formData.contractor_email && formData.contractor_email.trim()) {
+        settingsData.append('contractor_email', formData.contractor_email.trim());
+      }
+      if (formData.contractor_address && formData.contractor_address.trim()) {
+        settingsData.append('contractor_address', formData.contractor_address.trim());
+      }
       
       // Logo and Theme
-      if (formData.company_logo) settingsData.append('company_logo', formData.company_logo);
-      settingsData.append('primary_color', formData.primary_color);
-      settingsData.append('secondary_color', formData.secondary_color);
+      if (formData.company_logo) {
+        settingsData.append('company_logo', formData.company_logo);
+      }
+      // ✅ primary_color و secondary_color موجودان دائماً (قيم افتراضية)
+      settingsData.append('primary_color', formData.primary_color || '#f97316');
+      settingsData.append('secondary_color', formData.secondary_color || '#ea580c');
       
+      // ✅ إرسال إعدادات الشركة
       await api.patch('auth/tenant-settings/current/', settingsData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      // Step 3: Mark onboarding as completed
-      const completeOnboardingData = new FormData();
-      completeOnboardingData.append('onboarding_completed', 'true');
-      await api.patch('auth/users/update_profile/', completeOnboardingData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -159,9 +213,30 @@ export default function OnboardingWizardPage() {
       navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Onboarding error:', err);
-      const errorMsg = err.response?.data?.error || 
-                      err.response?.data?.message || 
-                      (isRTL ? 'حدث خطأ أثناء حفظ الإعدادات' : 'Error saving settings');
+      // ✅ عرض رسالة الخطأ بشكل أفضل
+      let errorMsg = isRTL ? 'حدث خطأ أثناء حفظ الإعدادات' : 'Error saving settings';
+      
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        if (typeof errorData === 'string') {
+          errorMsg = errorData;
+        } else if (errorData.error) {
+          errorMsg = errorData.error;
+        } else if (errorData.message) {
+          errorMsg = errorData.message;
+        } else if (errorData.detail) {
+          errorMsg = errorData.detail;
+        } else {
+          // عرض أول خطأ من القائمة
+          const firstError = Object.values(errorData)[0];
+          if (Array.isArray(firstError)) {
+            errorMsg = firstError[0];
+          } else if (typeof firstError === 'string') {
+            errorMsg = firstError;
+          }
+        }
+      }
+      
       setError(errorMsg);
     } finally {
       setLoading(false);
