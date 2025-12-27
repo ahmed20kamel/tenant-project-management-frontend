@@ -7,6 +7,7 @@ import AdminSidebar from "./AdminSidebar";
 import CompanyNavbar from "./CompanyNavbar";
 import CompanySidebar from "./CompanySidebar";
 import Breadcrumbs from "./Breadcrumbs";
+import { SidebarProvider, useSidebar } from "./SidebarContext";
 
 // دالة لتطبيق Theme ديناميكياً - لوحة ألوان كاملة للشركة
 const adjustColorBrightness = (hex, percent) => {
@@ -45,10 +46,11 @@ const applyTheme = (theme) => {
   }
 };
 
-export default function Layout({ children }) {
+function LayoutContent({ children }) {
   const { i18n } = useTranslation();
   const { user, tenantTheme } = useAuth();
   const location = useLocation();
+  const { collapsed } = useSidebar();
   const lang = i18n.language;
   const isRTL = lang === "ar";
 
@@ -99,16 +101,34 @@ export default function Layout({ children }) {
   }
 
   return (
-    <div className="layout" lang={lang} dir={isRTL ? "rtl" : "ltr"} style={{ direction: isRTL ? 'rtl' : 'ltr' }}>
-      {/* Sidebar placeholder for grid */}
-      <div className="sidebar-placeholder"></div>
-      <Sidebar />
-      <div className="main" style={{ direction: isRTL ? 'rtl' : 'ltr' }}>
+    <div className="app-layout" lang={lang} dir={isRTL ? "rtl" : "ltr"}>
+      {/* Header */}
+      <header className="app-header">
         <Navbar />
-        {/* Breadcrumbs تظهر فقط في واجهة Admin */}
-        {useAdminLayout && <Breadcrumbs />}
-        <main className="main-content" style={{ direction: isRTL ? 'rtl' : 'ltr' }}>{children}</main>
+      </header>
+      
+      {/* Main Layout Container */}
+      <div className="app-layout-container">
+        {/* Sidebar */}
+        <aside className={`app-sider ${collapsed ? 'collapsed' : ''}`}>
+          <Sidebar />
+        </aside>
+        
+        {/* Content Area */}
+        <div className={`app-content-wrapper ${collapsed ? 'sidebar-collapsed' : ''}`}>
+          {/* Breadcrumbs تظهر فقط في واجهة Admin */}
+          {useAdminLayout && <Breadcrumbs />}
+          <main className="app-content" style={{ direction: isRTL ? 'rtl' : 'ltr' }}>{children}</main>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function Layout({ children }) {
+  return (
+    <SidebarProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </SidebarProvider>
   );
 }

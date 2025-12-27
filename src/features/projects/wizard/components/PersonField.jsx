@@ -42,8 +42,9 @@ export default function PersonField({
   const [savedList, setSavedList] = useState(() => loadSavedList(storageKey));
   const [dbConsultants, setDbConsultants] = useState([]); // الاستشاريين من قاعدة البيانات
   const [loadingConsultants, setLoadingConsultants] = useState(false);
+  const [addingConsultant, setAddingConsultant] = useState(false); // ✅ نقل useState للأعلى قبل أي return
 
-  // ✅ جلب الاستشاريين من قاعدة البيانات (للاستشاري فقط) مع caching
+  // ✅ جلب الاستشاريين من /consultants/ API مباشرة (للاستشاري فقط)
   useEffect(() => {
     if (type !== "consultant" || isView) {
       return;
@@ -67,69 +68,31 @@ export default function PersonField({
       return;
     }
 
-    const loadConsultantsFromDB = async () => {
+    const loadConsultantsFromAPI = async () => {
       consultantsCache.loading = true;
       setLoadingConsultants(true);
       
       try {
-        const { data: projects } = await api.get("projects/");
-        const items = Array.isArray(projects) ? projects : (projects?.results || projects?.items || projects?.data || []);
+        // ✅ جلب الاستشاريين مباشرة من /consultants/ API
+        const { data } = await api.get("consultants/");
+        const consultantsList = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
         
-        const consultantsMap = new Map();
-
-        // ✅ تحسين: استخدام Promise.allSettled بدلاً من Promise.all لتجنب فشل كل الطلبات إذا فشل واحد
-        const results = await Promise.allSettled(
-          items.map(async (p) => {
-            const projectId = p.id;
-            if (!projectId) return null;
-            
-            try {
-              const { data: lic } = await api.get(`projects/${projectId}/license/`);
-              const firstL = Array.isArray(lic) ? lic[0] : null;
-              
-              if (firstL) {
-                // استشاري التصميم - نفس المنطق في ConsultantsPage
-                if (firstL.design_consultant_name) {
-                  const key = firstL.design_consultant_name.toLowerCase().trim();
-                  if (!consultantsMap.has(key)) {
-                    consultantsMap.set(key, {
-                      name: firstL.design_consultant_name,
-                      name_en: firstL.design_consultant_name_en || "",
-                      license: firstL.design_consultant_license_no || "",
-                    });
-                  }
-                }
-
-                // استشاري الإشراف (إذا كان مختلف) - نفس المنطق في ConsultantsPage
-                if (firstL.supervision_consultant_name && 
-                    firstL.supervision_consultant_name !== firstL.design_consultant_name) {
-                  const key = firstL.supervision_consultant_name.toLowerCase().trim();
-                  if (!consultantsMap.has(key)) {
-                    consultantsMap.set(key, {
-                      name: firstL.supervision_consultant_name,
-                      name_en: firstL.supervision_consultant_name_en || "",
-                      license: firstL.supervision_consultant_license_no || "",
-                    });
-                  }
-                }
-              }
-            } catch (e) {
-              // Silent error - بعض المشاريع قد لا تحتوي على رخص
-            }
-            return null;
-          })
-        );
-
-        const consultantsList = Array.from(consultantsMap.values()).sort((a, b) => 
-          a.name.localeCompare(b.name, isAR ? "ar" : "en")
-        );
+        // ✅ تحويل البيانات إلى الشكل المطلوب
+        const formattedConsultants = consultantsList.map((c) => ({
+          id: c.id,
+          name: c.name || "",
+          name_en: c.name_en || "",
+          license: c.license_no || "",
+        })).sort((a, b) => {
+          return (a.name || "").localeCompare(b.name || "", isAR ? "ar" : "en");
+        });
 
         // ✅ حفظ في الـ cache
-        consultantsCache.data = consultantsList;
+        consultantsCache.data = formattedConsultants;
         consultantsCache.timestamp = Date.now();
-        setDbConsultants(consultantsList);
+        setDbConsultants(formattedConsultants);
       } catch (e) {
-        console.error("Error loading consultants from DB:", e);
+        console.error("Error loading consultants from API:", e);
         setDbConsultants([]);
       } finally {
         consultantsCache.loading = false;
@@ -137,7 +100,7 @@ export default function PersonField({
       }
     };
     
-    loadConsultantsFromDB();
+    loadConsultantsFromAPI();
   }, [type, isView, isAR]);
 
   // ✅ استخدام فقط الاستشاريين من قاعدة البيانات (نفس منطق ConsultantsPage)
@@ -204,40 +167,48 @@ export default function PersonField({
     // ✅ للاستشاري: استخدام grid 2 columns في viewMode أيضاً
     return (
       <div className="form-grid cols-2" style={{ gap: "var(--space-4)", width: "100%" }}>
-        <ViewRow label={t("owner_name_ar") || "الاسم (عربي)"} value={nameValue} />
-        <ViewRow label={t("owner_name_en") || "الاسم بالإنجليزية"} value={nameEnValue} />
+        <ViewRow label={t("consultant_name_ar") || t("consultant_name") + " (عربي)" || "اسم الاستشاري (عربي)"} value={nameValue} />
+        <ViewRow label={t("consultant_name_en") || t("consultant_name") + " (إنجليزي)" || "اسم الاستشاري (إنجليزي)"} value={nameEnValue} />
         <ViewRow label={licenseLabel} value={licenseValue} />
         <div></div>
       </div>
     );
   }
 
-  // ✅ إضافة استشاري جديد إذا لم يكن موجوداً
-  const handleAddNew = () => {
-    if (!nameValue || !licenseValue) return;
+  // ✅ إضافة استشاري جديد إلى قاعدة البيانات إذا لم يكن موجوداً
+  const handleAddNew = async () => {
+    if (!nameValue || !licenseValue || type !== "consultant") return;
     
-    // ✅ حفظ الاستشاري مع name_en
-    const newItem = { 
-      name: nameValue, 
-      license: licenseValue,
-      name_en: nameEnValue || "",
-      ...(type === "contractor" && {
-        phone: phoneValue || "",
-        email: emailValue || ""
-      })
-    };
-    saveToList(storageKey, newItem);
-    setSavedList(loadSavedList(storageKey)); // ✅ إعادة تحميل القائمة المحدثة
-    
-    // ✅ إضافة الاستشاري الجديد إلى قائمة قاعدة البيانات المحلية والـ cache
-    if (type === "consultant") {
+    setAddingConsultant(true);
+    try {
+      // ✅ إضافة الاستشاري الجديد إلى قاعدة البيانات
+      const formData = new FormData();
+      formData.append("name", nameValue);
+      if (nameEnValue) {
+        formData.append("name_en", nameEnValue);
+      }
+      // ✅ إزالة CN- إذا كان موجوداً قبل الحفظ (سيتم إضافته تلقائياً من الـ backend إذا لزم الأمر)
+      const licenseNo = licenseValue.startsWith("CN-") ? licenseValue : `CN-${licenseValue}`;
+      formData.append("license_no", licenseNo);
+      
+      const { data: newConsultant } = await api.post("consultants/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      
+      // ✅ إضافة الاستشاري الجديد إلى القائمة المحلية
+      const newItem = {
+        id: newConsultant.id,
+        name: newConsultant.name || nameValue,
+        name_en: newConsultant.name_en || nameEnValue || "",
+        license: newConsultant.license_no || licenseNo,
+      };
+      
       setDbConsultants((prev) => {
-        const exists = prev.some(
-          (c) => c.name.toLowerCase().trim() === nameValue.toLowerCase().trim() &&
-                 c.license === licenseValue
-        );
+        const exists = prev.some((c) => c.id === newItem.id);
         if (!exists) {
-          const updated = [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
+          const updated = [...prev, newItem].sort((a, b) => 
+            (a.name || "").localeCompare(b.name || "", isAR ? "ar" : "en")
+          );
           // ✅ تحديث الـ cache أيضاً
           consultantsCache.data = updated;
           consultantsCache.timestamp = Date.now();
@@ -245,6 +216,22 @@ export default function PersonField({
         }
         return prev;
       });
+      
+      // ✅ تحديث القيم من الاستجابة
+      if (newConsultant.name && onNameChange) {
+        onNameChange(newConsultant.name);
+      }
+      if (newConsultant.name_en && onNameEnChange) {
+        onNameEnChange(newConsultant.name_en);
+      }
+      if (newConsultant.license_no && onLicenseChange) {
+        onLicenseChange(newConsultant.license_no);
+      }
+    } catch (e) {
+      console.error("Error adding consultant:", e);
+      alert(t("error_adding_consultant") || "حدث خطأ أثناء إضافة الاستشاري. يرجى المحاولة مرة أخرى.");
+    } finally {
+      setAddingConsultant(false);
     }
   };
 
@@ -496,39 +483,24 @@ export default function PersonField({
             value={nameValue ? { value: nameValue, label: nameValue } : null}
             onChange={(option, actionMeta) => {
               if (actionMeta.action === 'create-option') {
-                // ✅ تم إنشاء استشاري جديد
-                const newName = option.value;
-                onNameChange(newName);
-                // ✅ إضافة الاستشاري الجديد إلى القائمة
-                const newItem = {
-                  name: newName,
-                  license: licenseValue || "",
-                  name_en: nameEnValue || "",
-                };
-                saveToList(storageKey, newItem);
-                setSavedList(loadSavedList(storageKey));
-                setDbConsultants((prev) => {
-                  const exists = prev.some(
-                    (c) => c.name.toLowerCase().trim() === newName.toLowerCase().trim()
-                  );
-                  if (!exists) {
-                    const updated = [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name, isAR ? "ar" : "en"));
-                    // ✅ تحديث الـ cache أيضاً
-                    consultantsCache.data = updated;
-                    consultantsCache.timestamp = Date.now();
-                    return updated;
-                  }
-                  return prev;
-                });
+                // ✅ تم إنشاء خيار جديد (لكن نحتاج لإضافة البيانات أولاً قبل الحفظ)
+                // فقط نملأ الاسم، المستخدم سيدخل باقي البيانات ثم يضغط زر "إضافة"
+                onNameChange(option.value);
               } else if (option) {
-                // ✅ تم اختيار استشاري موجود
+                // ✅ تم اختيار استشاري موجود من القائمة
                 const selectedConsultant = allConsultants.find(
                   (c) => c.name === option.value
                 );
                 if (selectedConsultant) {
+                  // ✅ ملء البيانات تلقائياً من الاستشاري المختار
                   onNameChange(selectedConsultant.name);
                   onNameEnChange && onNameEnChange(selectedConsultant.name_en || "");
-                  onLicenseChange(selectedConsultant.license || "");
+                  // ✅ التأكد من أن رقم الرخصة يبدأ بـ CN-
+                  let licenseNo = selectedConsultant.license || "";
+                  if (licenseNo && !licenseNo.startsWith("CN-")) {
+                    licenseNo = "CN-" + licenseNo.replace(/^CN-/, "");
+                  }
+                  onLicenseChange(licenseNo);
                   if (onSelect) onSelect(selectedConsultant);
                 } else {
                   onNameChange(option.value);
@@ -536,6 +508,8 @@ export default function PersonField({
               } else {
                 // ✅ تم مسح الاختيار
                 onNameChange("");
+                onNameEnChange && onNameEnChange("");
+                onLicenseChange("");
               }
             }}
             onCreateOption={(inputValue) => {
@@ -637,6 +611,7 @@ export default function PersonField({
               <button
                 type="button"
                 onClick={handleAddNew}
+                disabled={addingConsultant}
                 style={{
                   minWidth: "120px",
                   padding: "12px 24px",
@@ -648,38 +623,35 @@ export default function PersonField({
                   fontWeight: 600,
                   fontSize: "14px",
                   color: "white",
-                  backgroundColor: "#22c55e",
-                  border: "2px solid #22c55e",
+                  backgroundColor: addingConsultant ? "#9ca3af" : "#22c55e",
+                  border: `2px solid ${addingConsultant ? "#9ca3af" : "#22c55e"}`,
                   borderRadius: "8px",
-                  cursor: "pointer",
+                  cursor: addingConsultant ? "not-allowed" : "pointer",
                   boxShadow: "0 2px 8px rgba(34, 197, 94, 0.3)",
                   transition: "all 0.2s ease",
                   flexShrink: 0,
+                  opacity: addingConsultant ? 0.7 : 1,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#16a34a";
-                  e.currentTarget.style.borderColor = "#16a34a";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(34, 197, 94, 0.4)";
+                  if (!addingConsultant) {
+                    e.currentTarget.style.backgroundColor = "#16a34a";
+                    e.currentTarget.style.borderColor = "#16a34a";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(34, 197, 94, 0.4)";
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#22c55e";
-                  e.currentTarget.style.borderColor = "#22c55e";
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(34, 197, 94, 0.3)";
+                  if (!addingConsultant) {
+                    e.currentTarget.style.backgroundColor = "#22c55e";
+                    e.currentTarget.style.borderColor = "#22c55e";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(34, 197, 94, 0.3)";
+                  }
                 }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 1px 4px rgba(34, 197, 94, 0.3)";
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(34, 197, 94, 0.4)";
-                }}
-                title={t("add_consultant") || "إضافة استشاري جديد"}
+                title={addingConsultant ? (t("adding") || "جارٍ الإضافة...") : (t("add_consultant") || "إضافة استشاري جديد")}
               >
                 <FaPlus style={{ fontSize: "16px", fontWeight: "bold" }} />
-                <span>{t("add") || "إضافة"}</span>
+                <span>{addingConsultant ? (t("adding") || "جارٍ الإضافة...") : (t("add") || "إضافة")}</span>
               </button>
             )}
           </div>

@@ -37,11 +37,7 @@ export default function ContractExtension({
         display: "flex",
         flexDirection: "column"
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <h5 style={{ margin: 0, color: "var(--text)", fontSize: "18px", fontWeight: "600" }}>
-            تمديد {index + 1}
-          </h5>
-        </div>
+        {/* ✅ إزالة العنوان المرقم من View mode */}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
           {/* سبب التمديد */}
@@ -66,7 +62,7 @@ export default function ContractExtension({
                 fileUrl={extension.file_url}
                 fileName={extension.file_name || extractFileNameFromUrl(extension.file_url)}
                 projectId={projectId}
-                endpoint={`projects/${projectId}/contract/`}
+                endpoint={`projects/${projectId}/start-order/`}
               />
             </Field>
           )}

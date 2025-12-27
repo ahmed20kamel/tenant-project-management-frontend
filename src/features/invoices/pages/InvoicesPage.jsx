@@ -54,25 +54,43 @@ export default function InvoicesPage() {
       const projectsList = Array.isArray(projectsData) ? projectsData : (projectsData?.results || projectsData?.items || projectsData?.data || []);
       setProjects(projectsList || []);
       
-      // Load actual invoices from all projects only
+      // Load actual invoices from all projects only - NO PAYMENTS
       const invoicesPromises = [];
       for (const project of projectsList) {
         invoicesPromises.push(
           api.get(`projects/${project.id}/actual-invoices/`).then(res => {
             const items = Array.isArray(res.data) ? res.data : (res.data?.results || res.data?.items || res.data?.data || []);
-            return items.map(inv => ({ 
-              ...inv, 
-              __type: 'actual', 
-              __project: project,
-              items: Array.isArray(inv.items) ? inv.items : []
-            }));
+            // Filter to ensure only invoices are included (not payments)
+            return items
+              .filter(item => {
+                // Ensure it's an invoice, not a payment
+                // Check if it has invoice-specific fields
+                return item.invoice_number || item.invoice_date || (item.__type === 'actual' || item.type === 'invoice');
+              })
+              .map(inv => ({ 
+                ...inv, 
+                __type: 'actual', 
+                __project: project,
+                items: Array.isArray(inv.items) ? inv.items : []
+              }));
           }).catch(() => [])
         );
       }
       
       const invoicesArrays = await Promise.all(invoicesPromises);
       const allInvoicesFlat = invoicesArrays.flat();
-      setAllInvoices(allInvoicesFlat);
+      // Final filter to ensure no payments are included and exclude invoices with linked payments
+      const filteredInvoices = allInvoicesFlat.filter(item => {
+        // Exclude anything that looks like a payment
+        if (item.payment_date && !item.invoice_date) return false;
+        if (item.payer && !item.invoice_number) return false;
+        // Must have invoice_number or invoice_date to be considered an invoice
+        if (!item.invoice_number && !item.invoice_date) return false;
+        // Exclude invoices that are already linked to payments
+        if (item.payment_id || item.payment) return false;
+        return true;
+      });
+      setAllInvoices(filteredInvoices);
     } catch (e) {
       // Error loading data
       setProjects([]);
@@ -89,9 +107,20 @@ export default function InvoicesPage() {
     toastTimer.current = setTimeout(() => setToast(null), 3000);
   };
 
-  // Filtered invoices
+  // Filtered invoices - Ensure only invoices, no payments
   const filteredInvoices = useMemo(() => {
-    let filtered = [...allInvoices];
+    // First, filter out any items that might be payments
+    let filtered = allInvoices.filter(inv => {
+      // Must have invoice_number or invoice_date to be considered an invoice
+      if (!inv.invoice_number && !inv.invoice_date) return false;
+      // Exclude items that look like payments
+      if (inv.payment_date && !inv.invoice_date) return false;
+      if (inv.payer && !inv.invoice_number && !inv.invoice_date) return false;
+      // Exclude invoices that are already linked to payments
+      if (inv.payment_id || inv.payment) return false;
+      // Must be an actual invoice
+      return true;
+    });
     
     if (filters.q) {
       const q = filters.q.toLowerCase();

@@ -5,17 +5,34 @@ import { api } from "../../../services/api";
 import Button from "../../../components/common/Button";
 import Dialog from "../../../components/common/Dialog";
 import PageLayout from "../../../components/layout/PageLayout";
+import { useAuth } from "../../../contexts/AuthContext";
 import { getProjectTypeLabel, getContractTypeLabel } from "../../../utils/projectLabels";
 import { formatInternalCode } from "../../../utils/internalCodeFormatter";
 import { getProjectStatusLabel, getProjectStatusColor } from "../../../utils/projectStatus";
+import { getApprovalStatusLabel, getApprovalStatusColor, getApprovalStatusBadge } from "../../../utils/approvalStatus";
 
 export default function ProjectsPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isAR = /^ar\b/i.test(i18n.language || "");
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [enriching, setEnriching] = useState(false);
+  
+  // فلتر approval_status - الافتراضي: كل المشاريع (أو قيد الموافقة للمدير/Super Admin)
+  const isManager = user?.role?.name === 'Manager';
+  const isSuperAdmin = user?.is_superuser || user?.role?.name === 'company_super_admin';
+  // فلتر approval_status:
+  // - المستخدم العادي: يرى كل مشاريعه (بدون فلتر) - الفرق في الحالة (Badge/Status) فقط
+  // - المدير/Super Admin: يبدأ بتبويب "قيد الموافقة" لرؤية المهام المطلوبة
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState(
+    (isManager || isSuperAdmin) ? "pending_approvals" : "all"
+  ); // all (كل المشاريع - للمستخدم العادي), pending_approvals (قيد الموافقة), approved (في انتظار الاعتماد النهائي), final_approved (المعتمدة فقط)
+
+  // ✅ حالة الترتيب (Sorting)
+  const [sortBy, setSortBy] = useState(null); // 'project_end_date', 'project_name', 'internal_code', 'consultant', 'status', 'approval_status', 'created_at'
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' أو 'desc'
 
   // حذف فردي
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -34,6 +51,12 @@ export default function ProjectsPage() {
   // City dropdown state
   const [showCityDropdown, setShowCityDropdown] = useState(false);
 
+  // حالة للأزرار السريعة (Approve/Reject/Final Approve) في الجدول
+  const [approvingProjectId, setApprovingProjectId] = useState(null);
+  const [rejectingProjectId, setRejectingProjectId] = useState(null);
+  const [finalApprovingProjectId, setFinalApprovingProjectId] = useState(null);
+  const [actionNotes, setActionNotes] = useState("");
+  const [processingAction, setProcessingAction] = useState(false);
 
   // ===== فلاتر منظّمة =====
   const [filters, setFilters] = useState({
@@ -51,97 +74,87 @@ export default function ProjectsPage() {
   useEffect(() => {
     loadProjects();
     return () => clearTimeout(toastTimer.current);
-  }, []);
+  }, [approvalStatusFilter]);
 
   const loadProjects = async () => {
     try {
-      const { data } = await api.get("projects/");
-      const items = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
-      setProjects(items || []);
-      enrichOwnersAndConsultants(items || []);
+      // بناء URL مع فلترة approval_status
+      let url = "projects/?include=siteplan,license,contract,awarding";
+      
+      if (approvalStatusFilter === "final_approved") {
+        // فقط المشاريع المعتمدة نهائياً
+        url += `&approval_status=final_approved`;
+      } else if (approvalStatusFilter === "approved") {
+        // المشاريع في انتظار الاعتماد النهائي (لـ Super Admin)
+        url += `&approval_status=approved`;
+      } else if (approvalStatusFilter === "pending_approvals") {
+        // المشاريع قيد الموافقة (draft, pending) - استبعاد final_approved و approved
+        url += `&exclude_final_approved=true`;
+      }
+      
+      // ✅ استخدام include parameter لتقليل عدد API calls من N+1 إلى 1 فقط
+      const { data } = await api.get(url);
+      let items = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
+      
+      // فلترة إضافية في Frontend حسب التبويب المختار
+      if (approvalStatusFilter === "pending_approvals") {
+        // المشاريع قيد الموافقة (draft, pending) - استبعاد final_approved و approved
+        items = items.filter(p => p.approval_status !== 'final_approved' && p.approval_status !== 'approved');
+      } else if (approvalStatusFilter === "approved") {
+        // المشاريع في انتظار الاعتماد النهائي (لـ Super Admin)
+        items = items.filter(p => p.approval_status === 'approved');
+      } else if (approvalStatusFilter === "final_approved") {
+        // فقط المشاريع المعتمدة نهائياً
+        items = items.filter(p => p.approval_status === 'final_approved');
+      }
+      
+      // ✅ معالجة البيانات مباشرة من response - لا حاجة لـ enrichOwnersAndConsultants
+      const enriched = (items || []).map((p) => {
+        const siteplanData = p.siteplan_data || null;
+        const licenseData = p.license_data || null;
+        const contractData = p.contract_data || null;
+        const awardingData = p.awarding_data || null;
+
+        // استخراج بيانات الملاك
+        let ownerLabel = null;
+        let ownersData = [];
+        if (siteplanData?.owners?.length) {
+          ownersData = siteplanData.owners;
+          const owners = siteplanData.owners.map((o) => o?.owner_name_ar || o?.owner_name || o?.owner_name_en || "").filter(Boolean);
+          if (owners.length) {
+            ownerLabel = `${t("villa_mr_ms")} ${owners[0]}${owners.length > 1 ? t("villa_mr_ms_partners") : ""}`;
+          }
+        }
+
+        // استخراج بيانات الاستشاري
+        let consultantName = null;
+        let cityFromLicense = null;
+        if (licenseData) {
+          consultantName = licenseData.design_consultant_name || licenseData.supervision_consultant_name || null;
+          if (licenseData.city) {
+            cityFromLicense = licenseData.city;
+          }
+        }
+
+        return { 
+          ...p, 
+          city: p.city || cityFromLicense || null,
+          __owner_label: ownerLabel, 
+          __consultant_name: consultantName,
+          __has_awarding: !!awardingData,
+          __awarding_data: awardingData,
+          __contract_data: contractData,
+          __owners_data: ownersData,
+        };
+      });
+
+      setProjects(enriched);
     } catch (e) {
       console.error(e);
       setProjects([]);
       showToast("error", t("projects_loading_error"));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const enrichOwnersAndConsultants = async (items) => {
-    if (!items?.length) return;
-    setEnriching(true);
-    try {
-      const enriched = await Promise.all(
-        items.map(async (p) => {
-          const id = p.id;
-          let ownerLabel = null;
-          let consultantName = null;
-          let hasAwarding = false;
-          let awardingData = null;
-          let contractData = null;
-          let ownersData = [];
-          let cityFromLicense = null;
-
-          try {
-            const { data: sp } = await api.get(`projects/${id}/siteplan/`);
-            const first = Array.isArray(sp) ? sp[0] : null;
-            if (first?.owners?.length) {
-              ownersData = first.owners;
-              const owners = first.owners.map((o) => o?.owner_name_ar || o?.owner_name || o?.owner_name_en || "").filter(Boolean);
-              if (owners.length) {
-                ownerLabel = `${t("villa_mr_ms")} ${owners[0]}${owners.length > 1 ? t("villa_mr_ms_partners") : ""}`;
-              }
-            }
-          } catch (e) {}
-
-          try {
-            const { data: lic } = await api.get(`projects/${id}/license/`);
-            const firstL = Array.isArray(lic) ? lic[0] : null;
-            if (firstL) {
-              // استخدام design_consultant_name أو supervision_consultant_name
-              consultantName = firstL.design_consultant_name || firstL.supervision_consultant_name || null;
-              // إضافة المدينة من الرخصة
-              if (firstL.city) {
-                cityFromLicense = firstL.city;
-              }
-            }
-          } catch (e) {}
-
-          try {
-            const { data: contract } = await api.get(`projects/${id}/contract/`);
-            const firstContract = Array.isArray(contract) ? contract[0] : (contract || null);
-            if (firstContract) {
-              contractData = firstContract;
-            }
-          } catch (e) {}
-
-          try {
-            const { data: aw } = await api.get(`projects/${id}/awarding/`);
-            const firstA = Array.isArray(aw) ? aw[0] : (aw || null);
-            if (firstA) {
-              hasAwarding = true;
-              awardingData = firstA;
-            }
-          } catch (e) {}
-
-          return { 
-            ...p, 
-            city: p.city || cityFromLicense || null,
-            __owner_label: ownerLabel, 
-            __consultant_name: consultantName,
-            __has_awarding: hasAwarding,
-            __awarding_data: awardingData,
-            __contract_data: contractData,
-            __owners_data: ownersData,
-          };
-        })
-      );
-
-      setProjects(enriched);
-    } catch (e) {
-      console.error("Enrich failed", e);
-    } finally {
       setEnriching(false);
     }
   };
@@ -222,7 +235,7 @@ export default function ProjectsPage() {
     const phone = filters.phone.trim().toLowerCase();
     const email = filters.email.trim().toLowerCase();
 
-    return projects.filter((p) => {
+    let filtered = projects.filter((p) => {
       const hasSiteplan = !!p?.has_siteplan;
       const hasLicense = !!p?.has_license;
       const hasContract = !!p?.contract_type;
@@ -289,7 +302,56 @@ export default function ProjectsPage() {
 
       return true;
     });
-  }, [projects, filters, isAR]);
+
+    // ✅ تطبيق الترتيب (Sorting)
+    if (sortBy) {
+      filtered = [...filtered].sort((a, b) => {
+        let aVal, bVal;
+
+        switch (sortBy) {
+          case 'project_end_date':
+            aVal = a?.__contract_data?.project_end_date || '';
+            bVal = b?.__contract_data?.project_end_date || '';
+            // تحويل التاريخ إلى timestamp للمقارنة
+            aVal = aVal ? new Date(aVal).getTime() : 0;
+            bVal = bVal ? new Date(bVal).getTime() : 0;
+            break;
+          case 'project_name':
+            aVal = (a?.display_name || a?.name || '').toLowerCase();
+            bVal = (b?.display_name || b?.name || '').toLowerCase();
+            break;
+          case 'internal_code':
+            aVal = (a?.internal_code || `PRJ-${a?.id || 0}`).toLowerCase();
+            bVal = (b?.internal_code || `PRJ-${b?.id || 0}`).toLowerCase();
+            break;
+          case 'consultant':
+            aVal = (getConsultantName(a) || '').toLowerCase();
+            bVal = (getConsultantName(b) || '').toLowerCase();
+            break;
+          case 'status':
+            aVal = (a?.status || '').toLowerCase();
+            bVal = (b?.status || '').toLowerCase();
+            break;
+          case 'approval_status':
+            aVal = (a?.approval_status || '').toLowerCase();
+            bVal = (b?.approval_status || '').toLowerCase();
+            break;
+          case 'created_at':
+            aVal = a?.created_at ? new Date(a.created_at).getTime() : 0;
+            bVal = b?.created_at ? new Date(b.created_at).getTime() : 0;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [projects, filters, sortBy, sortOrder, isAR]);
 
   const uniqueValues = (getter) => {
     const s = new Set();
@@ -304,6 +366,26 @@ export default function ProjectsPage() {
   const consultants = useMemo(() => uniqueValues(getConsultantName), [projects]);
   const contractTypes = useMemo(() => uniqueValues((p) => p?.contract_type), [projects]);
   const cities = useMemo(() => uniqueValues((p) => p?.city).sort(), [projects]);
+
+  // ✅ وظيفة الترتيب (Sorting)
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // إذا كان نفس العمود، نغير الترتيب
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // إذا كان عمود جديد، نضبط الترتيب الافتراضي
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
+  // ✅ وظيفة للحصول على أيقونة الترتيب
+  const getSortIcon = (column) => {
+    if (sortBy !== column) {
+      return '↕️'; // أيقونة محايدة
+    }
+    return sortOrder === 'asc' ? '↑' : '↓';
+  };
 
   const isAllSelected =
     filteredProjects.length > 0 && filteredProjects.every((p) => selectedIds.has(p.id));
@@ -392,22 +474,82 @@ export default function ProjectsPage() {
 
   return (
     <PageLayout loading={loading} loadingText={t("loading_projects")}>
-      <div className="list-page">
-          <div className="list-header">
+      <div className="list-page" style={{ paddingBottom: "32px" }}>
+          <div className="list-header" style={{ marginBottom: "32px" }}>
             <div>
-              <h1 className="list-title">{t("projects_title")}</h1>
-              <p className="prj-subtitle">{t("projects_subtitle")}</p>
+              <h1 className="list-title" style={{ marginBottom: "8px", fontSize: "28px", fontWeight: 700, color: "var(--ink, #1f2937)" }}>{t("projects_title")}</h1>
+              <p className="prj-subtitle" style={{ margin: 0, fontSize: "15px", color: "var(--muted, #6b7280)", lineHeight: 1.5 }}>{t("projects_subtitle")}</p>
             </div>
             <div className="list-header__actions">
               <Button 
                 onClick={createProject} 
                 variant="primary"
                 className="prj-btn prj-btn--primary"
+                style={{ minHeight: "44px", padding: "0 24px", fontSize: "14px", fontWeight: 600 }}
               >
                 {t("homepage_cta")}
               </Button>
             </div>
           </div>
+
+          {/* تبويبات الفلترة - تظهر فقط للمدير و Super Admin */}
+          {(isManager || isSuperAdmin) && (
+            <div className="prj-tabs-bar" style={{
+              marginBottom: "32px",
+              display: "flex",
+              gap: "0",
+              backgroundColor: "var(--surface, #ffffff)",
+              borderRadius: "var(--radius-lg, 12px)",
+              padding: "4px",
+              border: "1px solid var(--border, #e5e7eb)",
+              boxShadow: "var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05))"
+            }}>
+              <button
+                onClick={() => setApprovalStatusFilter("pending_approvals")}
+                className="prj-tab-button"
+                style={{
+                  padding: "14px 24px",
+                  border: "none",
+                  backgroundColor: approvalStatusFilter === "pending_approvals" ? "#f59e0b" : "transparent",
+                  color: approvalStatusFilter === "pending_approvals" ? "white" : "var(--text, #1f2937)",
+                  fontWeight: approvalStatusFilter === "pending_approvals" ? 600 : 500,
+                  cursor: "pointer",
+                  borderRadius: "var(--radius-md, 8px)",
+                  transition: "all 0.2s ease",
+                  fontSize: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: "140px",
+                  lineHeight: "1.4"
+                }}
+              >
+                {t("pending_approvals") || "قيد الموافقة"}
+              </button>
+              <button
+                onClick={() => setApprovalStatusFilter("final_approved")}
+                className="prj-tab-button"
+                style={{
+                  padding: "14px 24px",
+                  border: "none",
+                  backgroundColor: approvalStatusFilter === "final_approved" ? "#10b981" : "transparent",
+                  color: approvalStatusFilter === "final_approved" ? "white" : "var(--text, #1f2937)",
+                  fontWeight: approvalStatusFilter === "final_approved" ? 600 : 500,
+                  cursor: "pointer",
+                  borderRadius: "var(--radius-md, 8px)",
+                  transition: "all 0.2s ease",
+                  fontSize: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: "140px",
+                  lineHeight: "1.4"
+                }}
+              >
+                {t("approved_projects") || "المشاريع المعتمدة"}
+              </button>
+            </div>
+          )}
 
           {/* شريط الفلاتر */}
           <div className="prj-filters">
@@ -533,11 +675,6 @@ export default function ProjectsPage() {
                 <Button variant="ghost" onClick={clearFilters}>
                   {t("clear_filters")}
                 </Button>
-                {enriching && (
-                  <span className="prj-muted">
-                    {t("loading_owner_consultant")}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -562,7 +699,20 @@ export default function ProjectsPage() {
           {filteredProjects.length === 0 ? (
             <div className="prj-alert">
               <div className="prj-alert__title">
-                {t("no_projects_match")}
+                {approvalStatusFilter === "final_approved" 
+                  ? (t("no_approved_projects") || "لا توجد مشاريع معتمدة")
+                  : approvalStatusFilter === "pending_approvals"
+                  ? (t("no_pending_approvals") || "لا توجد مشاريع قيد الموافقة")
+                  : (t("no_projects_match") || "لا توجد مشاريع")
+                }
+              </div>
+              <div className="prj-alert__desc" style={{ marginTop: "8px", color: "var(--muted)" }}>
+                {approvalStatusFilter === "final_approved"
+                  ? (t("no_approved_projects_desc") || "المشاريع المعتمدة نهائياً ستظهر هنا")
+                  : approvalStatusFilter === "pending_approvals"
+                  ? (t("no_pending_approvals_desc") || "المشاريع التي لم يتم اعتمادها بعد ستظهر هنا")
+                  : (t("no_projects_desc") || "لا توجد مشاريع متطابقة مع الفلاتر المحددة")
+                }
               </div>
             </div>
           ) : (
@@ -579,11 +729,48 @@ export default function ProjectsPage() {
                     />
                   </th>
                   <th>#</th>
-                  <th>{t("project_view_internal_code").replace(":", "")}</th>
-                  <th>{t("project_name")}</th>
-                  <th>{t("consultant")}</th>
-                  <th>{t("project_end_date")}</th>
-                  <th>{t("project_status")}</th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('internal_code')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("project_view_internal_code").replace(":", "")} {getSortIcon('internal_code')}
+                  </th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('project_name')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("project_name")} {getSortIcon('project_name')}
+                  </th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('consultant')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("consultant")} {getSortIcon('consultant')}
+                  </th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('project_end_date')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("project_end_date")} {getSortIcon('project_end_date')}
+                  </th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('status')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("project_status")} {getSortIcon('status')}
+                  </th>
+                  <th 
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleSort('approval_status')}
+                    title={t("click_to_sort") || "اضغط للترتيب"}
+                  >
+                    {t("approval_status") || "حالة الموافقة"} {getSortIcon('approval_status')}
+                  </th>
                   <th>{t("completion_status")}</th>
                   <th style={{ minWidth: "280px" }}>{t("action")}</th>
                 </tr>
@@ -654,25 +841,97 @@ export default function ProjectsPage() {
                       </td>
 
                       <td className="prj-nowrap">
+                        {p?.approval_status && (
+                          <div style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "4px 12px",
+                            borderRadius: "12px",
+                            backgroundColor: getApprovalStatusColor(p.approval_status) + "20",
+                            color: getApprovalStatusColor(p.approval_status),
+                            fontSize: "12px",
+                            fontWeight: 500
+                          }}>
+                            <span style={{
+                              width: "8px",
+                              height: "8px",
+                              borderRadius: "50%",
+                              backgroundColor: getApprovalStatusColor(p.approval_status),
+                              display: "inline-block"
+                            }}></span>
+                            {getApprovalStatusLabel(p.approval_status, i18n.language)}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="prj-nowrap">
                         {getCompletionStatus(p)}
                       </td>
 
                       <td className="prj-actions">
-                        <Button as={Link} variant="primary" to={`/projects/${p?.id}`} className="prj-btn prj-btn--primary">
-                          {t("view")}
-                        </Button>
-                        <Button as={Link} variant="secondary" to={`/projects/${p?.id}/wizard`} className="prj-btn prj-btn--secondary">
-                          {t("edit")}
-                        </Button>
-                        <Button 
-                          variant="danger" 
-                          onClick={() => askDelete(p)} 
-                          disabled={deletingId === p.id} 
-                          title={t("delete_project")}
-                          className="prj-btn prj-btn--danger"
-                        >
-                          {t("delete")}
-                        </Button>
+                        <div className="prj-actions" style={{ justifyContent: "flex-start" }}>
+                          <Button as={Link} variant="primary" to={`/projects/${p?.id}`} className="prj-btn prj-btn--primary">
+                            {t("view")}
+                          </Button>
+                          <Button as={Link} variant="secondary" to={`/projects/${p?.id}/wizard`} className="prj-btn prj-btn--secondary">
+                            {t("edit")}
+                          </Button>
+                          
+                          {/* أزرار الموافقة - تظهر فقط في تبويب "قيد الموافقة" */}
+                          {approvalStatusFilter === "pending_approvals" && (
+                            <>
+                              {/* زر الموافقة للمدير - يظهر فقط للمشاريع في حالة pending */}
+                              {isManager && p?.approval_status === "pending" && (
+                                <Button 
+                                  variant="primary" 
+                                  onClick={() => setApprovingProjectId(p.id)} 
+                                  disabled={processingAction}
+                                  className="prj-btn"
+                                  style={{ backgroundColor: "#10b981", borderColor: "#10b981", color: "#fff" }}
+                                >
+                                  {t("approve") || "موافقة"}
+                                </Button>
+                              )}
+                              
+                              {/* زر الرفض للمدير - يظهر فقط للمشاريع في حالة pending */}
+                              {isManager && p?.approval_status === "pending" && (
+                                <Button 
+                                  variant="danger" 
+                                  onClick={() => setRejectingProjectId(p.id)} 
+                                  disabled={processingAction}
+                                  className="prj-btn prj-btn--danger"
+                                >
+                                  {t("reject") || "رفض"}
+                                </Button>
+                              )}
+                              
+                            </>
+                          )}
+                          
+                          {/* زر الاعتماد النهائي لـ Super Admin - يظهر في تبويب "في انتظار الاعتماد النهائي" */}
+                          {approvalStatusFilter === "approved" && isSuperAdmin && p?.approval_status === "approved" && (
+                            <Button 
+                              variant="primary" 
+                              onClick={() => setFinalApprovingProjectId(p.id)} 
+                              disabled={processingAction}
+                              className="prj-btn"
+                              style={{ backgroundColor: "#10b981", borderColor: "#10b981", color: "#fff" }}
+                            >
+                              {t("final_approve") || "اعتماد نهائي"}
+                            </Button>
+                          )}
+                          
+                          <Button 
+                            variant="danger" 
+                            onClick={() => askDelete(p)} 
+                            disabled={deletingId === p.id} 
+                            title={t("delete_project")}
+                            className="prj-btn prj-btn--danger"
+                          >
+                            {t("delete")}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -696,6 +955,158 @@ export default function ProjectsPage() {
             {toast.msg}
           </div>
         )}
+
+        {/* Dialog الموافقة على المشروع (من الجدول) */}
+        <Dialog
+          open={!!approvingProjectId}
+          title={t("approve_stage") || "موافقة على المرحلة"}
+          desc={
+            <div>
+              <p>{t("approve_stage_confirmation") || "هل أنت متأكد من الموافقة على هذه المرحلة؟"}</p>
+              <textarea
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+                placeholder={t("approval_notes_optional") || "ملاحظات (اختياري)"}
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  marginTop: "12px",
+                  padding: "8px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  fontFamily: "inherit"
+                }}
+              />
+            </div>
+          }
+          confirmLabel={t("approve") || "موافقة"}
+          cancelLabel={t("cancel")}
+          onClose={() => {
+            setApprovingProjectId(null);
+            setActionNotes("");
+          }}
+          onConfirm={async () => {
+            if (!approvingProjectId) return;
+            try {
+              setProcessingAction(true);
+              await api.post(`projects/${approvingProjectId}/approve/`, { notes: actionNotes || "" });
+              setApprovingProjectId(null);
+              setActionNotes("");
+              setToast({ type: "success", msg: t("project_approved_successfully") || "تمت الموافقة بنجاح" });
+              loadProjects();
+            } catch (e) {
+              const msg = e?.response?.data?.error || e?.response?.data?.detail || e?.message || t("error");
+              setToast({ type: "error", msg });
+            } finally {
+              setProcessingAction(false);
+            }
+          }}
+          busy={processingAction}
+        />
+
+        {/* Dialog رفض المشروع (من الجدول) */}
+        <Dialog
+          open={!!rejectingProjectId}
+          title={t("reject") || "رفض المشروع"}
+          desc={
+            <div>
+              <p>{t("reject_confirmation") || "هل أنت متأكد من رفض هذا المشروع؟"}</p>
+              <textarea
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+                placeholder={t("rejection_notes_required") || "ملاحظات الرفض (مطلوبة)"}
+                required
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  marginTop: "12px",
+                  padding: "8px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  fontFamily: "inherit"
+                }}
+              />
+            </div>
+          }
+          confirmLabel={t("reject") || "رفض"}
+          cancelLabel={t("cancel")}
+          onClose={() => {
+            setRejectingProjectId(null);
+            setActionNotes("");
+          }}
+          onConfirm={async () => {
+            if (!rejectingProjectId || !actionNotes.trim()) {
+              setToast({ type: "error", msg: t("rejection_notes_required") || "ملاحظات الرفض مطلوبة" });
+              return;
+            }
+            try {
+              setProcessingAction(true);
+              await api.post(`projects/${rejectingProjectId}/reject/`, { notes: actionNotes });
+              setRejectingProjectId(null);
+              setActionNotes("");
+              setToast({ type: "success", msg: t("project_rejected_successfully") || "تم الرفض بنجاح" });
+              loadProjects();
+            } catch (e) {
+              const msg = e?.response?.data?.error || e?.response?.data?.detail || e?.message || t("error");
+              setToast({ type: "error", msg });
+            } finally {
+              setProcessingAction(false);
+            }
+          }}
+          busy={processingAction}
+          danger
+        />
+
+        {/* Dialog الاعتماد النهائي (من الجدول) */}
+        <Dialog
+          open={!!finalApprovingProjectId}
+          title={t("final_approve") || "الاعتماد النهائي للمشروع"}
+          desc={
+            <div>
+              <p>{t("final_approve_confirmation") || "هل أنت متأكد من الاعتماد النهائي للمشروع؟"}</p>
+              <p style={{ marginTop: "8px", fontSize: "0.9em", color: "var(--muted)" }}>
+                {t("final_approve_warning") || "بعد الاعتماد النهائي، سيصبح المشروع فعالاً ويظهر في قائمة المشاريع المعتمدة."}
+              </p>
+              <textarea
+                value={actionNotes}
+                onChange={(e) => setActionNotes(e.target.value)}
+                placeholder={t("approval_notes_optional") || "ملاحظات (اختياري)"}
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  marginTop: "12px",
+                  padding: "8px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  fontFamily: "inherit"
+                }}
+              />
+            </div>
+          }
+          confirmLabel={t("final_approve") || "اعتماد نهائي"}
+          cancelLabel={t("cancel")}
+          onClose={() => {
+            setFinalApprovingProjectId(null);
+            setActionNotes("");
+          }}
+          onConfirm={async () => {
+            if (!finalApprovingProjectId) return;
+            try {
+              setProcessingAction(true);
+              await api.post(`projects/${finalApprovingProjectId}/final_approve/`, { notes: actionNotes || "" });
+              setFinalApprovingProjectId(null);
+              setActionNotes("");
+              setToast({ type: "success", msg: t("project_final_approved_successfully") || "تم الاعتماد النهائي بنجاح" });
+              loadProjects();
+            } catch (e) {
+              const msg = e?.response?.data?.error || e?.response?.data?.detail || e?.message || t("error");
+              setToast({ type: "error", msg });
+            } finally {
+              setProcessingAction(false);
+            }
+          }}
+          busy={processingAction}
+        />
 
         {/* Confirm Dialog — حذف فردي */}
         <Dialog

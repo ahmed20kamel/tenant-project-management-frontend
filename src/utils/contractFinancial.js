@@ -36,7 +36,14 @@ export function computeContractSummary(contract) {
       ? n(c.total_bank_value)
       : 0;
 
-  const grossOwner = n(c.total_owner_value) || Math.max(0, grossTotal - grossBank);
+  // ✅ حساب حصة المالك: للقرض السكني = الفرق، للتمويل الخاص = الإجمالي
+  const calculatedOwner = c.contract_classification === "housing_loan_program" 
+    ? Math.max(0, grossTotal - grossBank)  // ✅ للقرض السكني: الفرق
+    : grossTotal;  // ✅ للتمويل الخاص: الإجمالي كامل
+  
+  // ✅ استخدام القيمة المحفوظة إذا كانت صحيحة (تساوي القيمة المحسوبة)، وإلا استخدام القيمة المحسوبة
+  const savedOwner = n(c.total_owner_value);
+  const grossOwner = (Math.abs(savedOwner - calculatedOwner) < 0.01) ? savedOwner : calculatedOwner;
 
   const ownerIncludes =
     c.owner_includes_consultant === true ||
@@ -58,14 +65,28 @@ export function computeContractSummary(contract) {
       (c.bank_fee_extra_mode === "percent" ? n(c.bank_fee_extra_value) : 0)
     : 0;
 
-  const totalPct =
-    ownerPct && bankPct && Math.abs(ownerPct - bankPct) < 1e-6
-      ? ownerPct
-      : ownerPct || bankPct || 0;
+  // ✅ حساب totalPct للإجمالي فقط (للعرض في الجدول الكلي)
+  // إذا كانت النسب متساوية، نستخدمها، وإلا نستخدم المتوسط المرجح
+  let totalPct = 0;
+  if (ownerPct > 0 && bankPct > 0 && Math.abs(ownerPct - bankPct) < 1e-6) {
+    // النسب متساوية
+    totalPct = ownerPct;
+  } else if (ownerPct > 0 && bankPct > 0) {
+    // النسب مختلفة - نحسب المتوسط المرجح بناءً على المبالغ
+    const totalFees = (grossOwner * ownerPct / (100 + ownerPct)) + (grossBank * bankPct / (100 + bankPct));
+    const totalNet = grossTotal - totalFees;
+    if (totalNet > 0) {
+      totalPct = (totalFees / totalNet) * 100;
+    }
+  } else {
+    // واحد فقط له نسبة
+    totalPct = ownerPct || bankPct || 0;
+  }
 
+  // ✅ تفكيك الأتعاب من الإجماليات - كل جزء يستخدم نسبته الخاصة فقط
   const total = feeInclusive(grossTotal, totalPct);
-  const bank = feeInclusive(grossBank, bankPct || totalPct);
-  const owner = feeInclusive(grossOwner, ownerPct || totalPct);
+  const bank = feeInclusive(grossBank, bankPct); // ✅ استخدام bankPct مباشرة فقط
+  const owner = feeInclusive(grossOwner, ownerPct); // ✅ استخدام ownerPct مباشرة فقط
 
   return {
     contract: c,

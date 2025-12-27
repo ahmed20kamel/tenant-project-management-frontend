@@ -20,12 +20,12 @@ export default function AdminSidebar() {
   const logoUrl = "/logo.png";
 
   const items = [
-    { to: "/admin/dashboard", label: isRTL ? "لوحة التحكم" : "Dashboard", icon: FaHome },
-    { to: "/admin/tenants", label: isRTL ? "الشركات" : "Companies", icon: FaBuilding },
-    { to: "/admin/users", label: isRTL ? "المستخدمين" : "Users", icon: FaUsers },
-    { to: "/admin/analytics", label: isRTL ? "التحليلات" : "Analytics", icon: FaChartLine },
-    { to: "/admin/pricing", label: isRTL ? "الباقات" : "Pricing Plans", icon: FaBox },
-    { to: "/admin/settings", label: isRTL ? "إعدادات النظام" : "System Settings", icon: FaCog },
+    { to: "/admin/dashboard", label: t("admin_dashboard"), icon: FaHome },
+    { to: "/admin/tenants", label: t("admin_companies"), icon: FaBuilding },
+    { to: "/admin/users", label: t("admin_users"), icon: FaUsers },
+    { to: "/admin/analytics", label: t("admin_analytics"), icon: FaChartLine },
+    { to: "/admin/pricing", label: t("admin_pricing"), icon: FaBox },
+    { to: "/admin/settings", label: t("admin_settings"), icon: FaCog },
   ];
 
   return (

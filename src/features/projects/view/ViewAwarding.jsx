@@ -18,7 +18,7 @@ export default function ViewAwarding() {
           backLabel={t("back")}
         />
         <div className="mt-12">
-          <AwardingStep projectId={projectId} onPrev={null} isView={true} />
+          <AwardingStep projectId={projectId} onPrev={null} onNext={null} isView={false} />
         </div>
       </div>
     </PageLayout>

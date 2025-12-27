@@ -14,6 +14,8 @@ export default function Dialog({
   danger = false,
   busy = false,
   open = false,
+  style = {},
+  className = "",
 }) {
   const { t } = useTranslation();
   const defaultConfirmLabel = confirmLabel ?? t("confirm_default");
@@ -43,7 +45,7 @@ export default function Dialog({
       role="dialog"
       aria-modal="true"
     >
-      <div className="dlg">
+      <div className={`dlg ${className}`} style={style}>
         <div className="dlg-hd">
           <span id="dlg-title" className="dlg-title">
             {title}

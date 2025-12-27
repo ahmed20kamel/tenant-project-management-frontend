@@ -9,7 +9,10 @@ export default function useProjectData(projectId) {
     license: null,
     contract: null,
     awarding: null,
+    startOrder: null,
     payments: [],
+    variations: [],
+    invoices: [],
   });
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
@@ -42,22 +45,24 @@ export default function useProjectData(projectId) {
     setLoading(true);
 
     try {
-      const [pRes, spRes, lcRes, ctRes, awRes, paymentsRes] = await Promise.allSettled([
-        api.get(`projects/${projectId}/`),
-        api.get(`projects/${projectId}/siteplan/`),
-        api.get(`projects/${projectId}/license/`),
-        api.get(`projects/${projectId}/contract/`),
-        api.get(`projects/${projectId}/awarding/`),
+      // ✅ استخدام include parameter لتقليل عدد API calls من 6 إلى 2 فقط (project + payments)
+      const [pRes, paymentsRes, variationsRes, invoicesRes] = await Promise.allSettled([
+        api.get(`projects/${projectId}/?include=siteplan,license,contract,awarding,start_order`),
         api.get(`projects/${projectId}/payments/`),
+        api.get(`projects/${projectId}/variations/`),
+        api.get(`projects/${projectId}/actual-invoices/`),
       ]);
 
       if (!mountedRef.current) return;
 
       const project = extractData(pRes);
-      const siteplan = extractData(spRes);
-      const license = extractData(lcRes);
-      const contract = extractData(ctRes);
-      const awarding = extractData(awRes);
+      
+      // ✅ استخراج البيانات المرتبطة من project object
+      const siteplan = project?.siteplan_data || null;
+      const license = project?.license_data || null;
+      const contract = project?.contract_data || null;
+      const awarding = project?.awarding_data || null;
+      const startOrder = project?.start_order_data || null;
       
       // ✅ معالجة الدفعات بشكل آمن - إذا فشل الطلب، نستخدم قائمة فارغة
       let paymentsData = [];
@@ -75,8 +80,45 @@ export default function useProjectData(projectId) {
         // ✅ إذا فشل الطلب (مثل 500 error)، نستخدم قائمة فارغة بدلاً من إيقاف التحميل
         // Silent warning
       }
+      
+      // ✅ معالجة Variations بشكل آمن
+      let variationsData = [];
+      if (variationsRes.status === "fulfilled") {
+        const response = variationsRes.value;
+        if (response && response.status >= 200 && response.status < 300) {
+          const responseData = response.data;
+          if (Array.isArray(responseData)) {
+            variationsData = responseData;
+          } else if (responseData && Array.isArray(responseData.results)) {
+            variationsData = responseData.results;
+          }
+        }
+      }
 
-      setData({ project, siteplan, license, contract, awarding, payments: paymentsData });
+      // ✅ معالجة Invoices بشكل آمن - تصفية الفواتير المرتبطة بدفعات
+      let invoicesData = [];
+      if (invoicesRes.status === "fulfilled") {
+        const response = invoicesRes.value;
+        if (response && response.status >= 200 && response.status < 300) {
+          const responseData = response.data;
+          let rawInvoices = [];
+          if (Array.isArray(responseData)) {
+            rawInvoices = responseData;
+          } else if (responseData && Array.isArray(responseData.results)) {
+            rawInvoices = responseData.results;
+          }
+          // تصفية الفواتير: استبعاد الفواتير المرتبطة بدفعات
+          invoicesData = rawInvoices.filter(inv => {
+            // يجب أن يكون فاتورة (وليس دفعة)
+            if (!inv.invoice_number && !inv.invoice_date) return false;
+            // استبعاد الفواتير المرتبطة بدفعات
+            if (inv.payment_id || inv.payment) return false;
+            return true;
+          });
+        }
+      }
+
+      setData({ project, siteplan, license, contract, awarding, startOrder, payments: paymentsData, variations: variationsData, invoices: invoicesData });
       setLoading(false);
     } catch (error) {
       if (!mountedRef.current) return;

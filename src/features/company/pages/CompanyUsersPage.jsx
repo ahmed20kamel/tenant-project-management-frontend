@@ -130,6 +130,11 @@ export default function CompanyUsersPage() {
         if (!updateData.password) {
           delete updateData.password; // لا نرسل كلمة المرور إذا كانت فارغة
         }
+        // تحويل role إلى role_id لأن الـ backend يتوقع role_id
+        if (updateData.role) {
+          updateData.role_id = updateData.role;
+          delete updateData.role;
+        }
         await api.patch(`auth/users/${editingUser.id}/`, updateData);
         setSuccess(isRTL ? 'تم تحديث المستخدم بنجاح' : 'User updated successfully');
       } else {
@@ -139,7 +144,13 @@ export default function CompanyUsersPage() {
           setLoading(false);
           return;
         }
-        await api.post('auth/users/', formData);
+        // تحويل role إلى role_id لأن الـ backend يتوقع role_id
+        const createData = { ...formData };
+        if (createData.role) {
+          createData.role_id = createData.role;
+          delete createData.role;
+        }
+        await api.post('auth/users/', createData);
         setSuccess(isRTL ? 'تم إنشاء المستخدم بنجاح' : 'User created successfully');
       }
       

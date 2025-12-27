@@ -11,6 +11,7 @@ import Field from "../../../../components/forms/Field";
 import { api } from "../../../../services/api";
 import { PROJECT_TYPES, VILLA_CATEGORIES, CONTRACT_TYPES } from "../../../../utils/constants";
 import { formatInternalCode, isLastDigitOdd, toDigits } from "../../../../utils/internalCodeFormatter";
+import { formatServerErrors } from "../../../../utils/helpers";
 
 // قائمة تصنيفات العقد
 const CONTRACT_CLASSIFICATION = [
@@ -34,6 +35,9 @@ export default function ProjectSetupStep({
   isView,
   onSaved, // اختياري: يُستدعى بعد الحفظ الناجح (مثلاً لإعادة تحميل المشروع في صفحة العرض)
   isNewProject = false, // ✅ مشروع جديد بدون projectId
+  isSuperAdmin = false, // ✅ هل المستخدم سوبر يوزر
+  autoFinalApprove = false, // ✅ خيار الاعتماد المباشر
+  setAutoFinalApprove, // ✅ دالة تحديث خيار الاعتماد المباشر
 }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
@@ -97,6 +101,8 @@ export default function ProjectSetupStep({
   const hasNextStep = typeof onNext === "function";
 
   const [errorMsg, setErrorMsg] = useState("");
+  const [internalCodeError, setInternalCodeError] = useState("");
+  const [validatingCode, setValidatingCode] = useState(false);
   const internalCodeInputRef = useRef(null);
 
   const [viewMode, setViewMode] = useState(() => {
@@ -159,6 +165,49 @@ export default function ProjectSetupStep({
     const digits = toDigits(raw);
     // نحفظ في الـ state الأرقام فقط؛ التنسيق (M + الأرقام) يتم عند العرض
     set("internalCode", digits);
+    // ✅ مسح رسالة الخطأ عند تغيير الكود
+    setInternalCodeError("");
+  };
+
+  // ✅ التحقق من الكود الداخلي عند blur (خروج المستخدم من الحقل)
+  const handleInternalCodeBlur = async () => {
+    const formatted = formatInternalCode(internalCode);
+    if (!formatted || formatted === "M") {
+      setInternalCodeError("");
+      return;
+    }
+
+    // التحقق من التنسيق
+    if (!isLastDigitOdd(formatted)) {
+      setInternalCodeError(t("internal_code_last_digit_error"));
+      return;
+    }
+
+    // ✅ التحقق من التكرار فقط إذا كان مشروع جديد
+    if (isNewProject && !projectId) {
+      setValidatingCode(true);
+      setInternalCodeError("");
+      
+      try {
+        // ✅ البحث عن مشروع بنفس الكود
+        const { data } = await api.get(`projects/?internal_code=${encodeURIComponent(formatted)}`);
+        const items = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
+        
+        if (items && items.length > 0) {
+          // ✅ الكود مستخدم بالفعل
+          const errorMsg = t("internal_code_already_exists", { code: formatted }) || `الكود الداخلي '${formatted}' مستخدم بالفعل في مشروع آخر. يرجى استخدام كود مختلف.`;
+          setInternalCodeError(errorMsg);
+        } else {
+          // ✅ الكود متاح
+          setInternalCodeError("");
+        }
+      } catch (e) {
+        // في حالة الخطأ، لا نعرض رسالة خطأ (قد يكون خطأ في الشبكة)
+        console.error("Error validating internal code:", e);
+      } finally {
+        setValidatingCode(false);
+      }
+    }
   };
 
   const labels = {
@@ -206,13 +255,40 @@ export default function ProjectSetupStep({
   const handleSaveAndNext = async () => {
     // ✅ التحقق من الكود الداخلي
     const formatted = formatInternalCode(internalCode);
-    if (formatted && !isLastDigitOdd(formatted)) {
-      setErrorMsg(t("internal_code_last_digit_error"));
+    
+    // التحقق من التنسيق
+    if (formatted && formatted !== "M" && !isLastDigitOdd(formatted)) {
+      setInternalCodeError(t("internal_code_last_digit_error"));
       return;
     }
 
-    // ✅ إذا كان مشروع جديد، نحفظ البيانات مؤقتاً فقط وننتقل للخطوة التالية
+    // ✅ إذا كان مشروع جديد، نتحقق من الكود قبل الانتقال
     if (isNewProject) {
+      // ✅ التحقق من التكرار إذا كان الكود موجوداً
+      if (formatted && formatted !== "M") {
+        setValidatingCode(true);
+        try {
+          const { data } = await api.get(`projects/?internal_code=${encodeURIComponent(formatted)}`);
+          const items = Array.isArray(data) ? data : (data?.results || data?.items || data?.data || []);
+          
+          if (items && items.length > 0) {
+            // ✅ الكود مستخدم بالفعل - نعرض الخطأ ولا ننتقل
+            const errorMsg = t("internal_code_already_exists", { code: formatted }) || `الكود الداخلي '${formatted}' مستخدم بالفعل في مشروع آخر. يرجى استخدام كود مختلف.`;
+            setInternalCodeError(errorMsg);
+            setValidatingCode(false);
+            return;
+          }
+        } catch (e) {
+          // في حالة الخطأ، نعرض رسالة خطأ عامة
+          console.error("Error validating internal code:", e);
+          setErrorMsg(t("error_validating_code") || "حدث خطأ أثناء التحقق من الكود الداخلي. يرجى المحاولة مرة أخرى.");
+          setValidatingCode(false);
+          return;
+        } finally {
+          setValidatingCode(false);
+        }
+      }
+
       // ✅ تحديث setup مع الكود الداخلي و contractClassification (إذا كان موجوداً)
       onChange({
         ...value,
@@ -220,7 +296,8 @@ export default function ProjectSetupStep({
         contractClassification: contractClassification || value?.contractClassification || "",
       });
       
-      if (onNext && canProceed) {
+      // ✅ التأكد من عدم وجود أخطاء قبل الانتقال
+      if (!internalCodeError && onNext && canProceed) {
         onNext();
       }
       return;
@@ -243,28 +320,41 @@ export default function ProjectSetupStep({
 
       await api.patch(`projects/${projectId}/`, payload);
       
-      // ✅ حفظ contract_classification في Contract
+          // ✅ حفظ contract_classification في Contract
       if (contractClassification) {
         try {
           // محاولة الحصول على contract موجود
           const contractRes = await api.get(`projects/${projectId}/contract/`);
           if (Array.isArray(contractRes.data) && contractRes.data.length > 0) {
             // تحديث contract موجود
-            await api.patch(`projects/${projectId}/contract/${contractRes.data[0].id}/`, {
+            const contractId = contractRes.data[0].id;
+            console.log("🔍 Attempting to update contract:", {
+              projectId,
+              contractId,
               contract_classification: contractClassification,
             });
-            console.log("✅ contract_classification updated in existing contract:", contractClassification);
+            const updateRes = await api.patch(`projects/${projectId}/contract/${contractId}/`, {
+              contract_classification: contractClassification,
+            });
+            console.log("✅ contract_classification updated in existing contract:", contractClassification, updateRes.data);
           } else {
             // إنشاء contract جديد
-            await api.post(`projects/${projectId}/contract/`, {
+            console.log("🔍 Attempting to create new contract with classification:", contractClassification);
+            const createRes = await api.post(`projects/${projectId}/contract/`, {
               contract_classification: contractClassification,
             });
-            console.log("✅ contract_classification saved in new contract:", contractClassification);
+            console.log("✅ contract_classification saved in new contract:", contractClassification, createRes.data);
           }
           // ✅ تحديث contractClassification في value (setup) مباشرة بعد الحفظ الناجح
           onChange({ ...value, contractClassification });
         } catch (e) {
           console.error("❌ Error saving contract classification:", e);
+          console.error("❌ Error details:", {
+            message: e?.message,
+            status: e?.response?.status,
+            data: e?.response?.data,
+            config: e?.config,
+          });
           // لا نوقف العملية إذا فشل حفظ contract_classification
         }
       } else {
@@ -283,9 +373,9 @@ export default function ProjectSetupStep({
         setViewMode(true);
       }
     } catch (e) {
-      const msg = e?.response?.data
-        ? JSON.stringify(e.response.data, null, 2)
-        : e.message || t("save_project_error");
+      // ✅ معالجة أفضل للأخطاء، خاصة خطأ تكرار الكود الداخلي
+      const formatted = formatServerErrors(e?.response?.data);
+      const msg = formatted || e?.message || t("save_project_error");
       setErrorMsg(msg);
     }
   };
@@ -340,10 +430,11 @@ export default function ProjectSetupStep({
                   ref={internalCodeInputRef}
                   type="text"
                   inputMode="numeric"
-                  className="input w-100 mono"
+                  className={`input w-100 mono ${internalCodeError ? "input-error" : ""}`}
                   placeholder={labels.internalCodePlaceholder}
                   value={formatInternalCode(internalCode || "")}
                   onChange={handleInternalCodeChange}
+                  onBlur={handleInternalCodeBlur}
                   onKeyDown={(e) => {
                     // ✅ منع حذف "M" فقط في حالة واحدة: إذا كانت القيمة "M" فقط (لا توجد أرقام)
                     if (e.key === "Backspace" || e.key === "Delete") {
@@ -360,13 +451,24 @@ export default function ProjectSetupStep({
                       // ✅ السماح بجميع عمليات الحذف الأخرى (حذف الأرقام، إلخ)
                     }
                   }}
-                  aria-describedby="internal-code-help"
+                  aria-describedby="internal-code-help internal-code-error"
                   maxLength={40}
+                  disabled={validatingCode}
                 />
               </Field>
               <div id="internal-code-help" className="muted mt-4">
                 {labels.internalCodeHelp}
               </div>
+              {validatingCode && (
+                <div className="muted mt-4" style={{ fontSize: "12px" }}>
+                  {t("validating_code") || "جارٍ التحقق من الكود..."}
+                </div>
+              )}
+              {internalCodeError && (
+                <div id="internal-code-error" className="error-message mt-4" style={{ color: "var(--error-500)", fontSize: "13px", fontWeight: 500 }}>
+                  {internalCodeError}
+                </div>
+              )}
             </div>
           </div>
           )}
@@ -528,12 +630,54 @@ export default function ProjectSetupStep({
         )}
       </div>
 
+      {/* ✅ خيار الاعتماد المباشر للسوبر يوزر (فقط للمشروع الجديد) */}
+      {!isReadOnly && isNewProject && isSuperAdmin && (
+        <div style={{ 
+          marginTop: "var(--space-4)", 
+          padding: "var(--space-4)", 
+          background: "var(--surface-2)", 
+          borderRadius: "8px",
+          border: "1px solid var(--border)"
+        }}>
+          <label style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: "12px", 
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: 500
+          }}>
+            <input
+              type="checkbox"
+              checked={autoFinalApprove}
+              onChange={(e) => setAutoFinalApprove?.(e.target.checked)}
+              style={{ 
+                width: "18px", 
+                height: "18px", 
+                cursor: "pointer" 
+              }}
+            />
+            <span>{t("auto_final_approve_on_create") || "اعتماد المشروع نهائياً مباشرة عند الإنشاء (تخطي انتظار الموافقة)"}</span>
+          </label>
+          {autoFinalApprove && (
+            <div style={{ 
+              marginTop: "8px", 
+              fontSize: "12px", 
+              color: "var(--text-secondary)",
+              paddingRight: "30px"
+            }}>
+              {t("auto_final_approve_note") || "سيتم اعتماد المشروع نهائياً مباشرة بعد الإنشاء دون الحاجة لإرساله للموافقة أو انتظار المدير."}
+            </div>
+          )}
+        </div>
+      )}
+
       {!isReadOnly && (
         <StepActions
           onPrev={onPrev}
           onNext={handleSaveAndNext}
-          disableNext={!baseSelected}
-          nextClassName={baseSelected ? "pulse" : ""}
+          disableNext={!baseSelected || !!internalCodeError || validatingCode}
+          nextClassName={baseSelected && !internalCodeError && !validatingCode ? "pulse" : ""}
           nextLabel={hasNextStep ? t("save_next_arrow") : t("save")}
         />
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../../../services/api";
 import PageLayout from "../../../components/layout/PageLayout";
@@ -11,9 +11,11 @@ import "./CreateVariationPage.css";
 
 export default function CreateVariationPage() {
   const { variationId } = useParams();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const isEditMode = !!variationId;
+  const projectFromQuery = searchParams.get("project"); // ✅ قراءة project من query parameter
 
   const [loading, setLoading] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
@@ -40,8 +42,11 @@ export default function CreateVariationPage() {
     loadProjects();
     if (isEditMode) {
       loadVariation();
+    } else if (projectFromQuery) {
+      // ✅ إذا كان هناك project في query parameter، نحدده مباشرة
+      setFormData(prev => ({ ...prev, project: projectFromQuery }));
     }
-  }, [variationId, isEditMode]);
+  }, [variationId, isEditMode, projectFromQuery]);
 
   const loadProjects = async () => {
     try {
@@ -121,6 +126,7 @@ export default function CreateVariationPage() {
     const consultantPercentage = parseFloat(formData.consultant_fees_percentage) || 0;
     const contractorEngineer = parseFloat(formData.contractor_engineer_fees) || 0; // مبلغ ثابت (Head and Profit)
     const discount = parseFloat(formData.discount) || 0;
+    const vat = parseFloat(formData.vat) || 0; // ✅ VAT قابل للتعديل يدوياً
     
     // Consultant Fees = Final Amount × (Consultant Percentage / 100)
     const consultant = final * (consultantPercentage / 100);
@@ -131,9 +137,7 @@ export default function CreateVariationPage() {
     // Net = Total - Discount (الخصم يُخصم أولاً)
     const net = total - discount;
     
-    // VAT = Net * 0.05 (الضريبة على المبلغ الصافي بعد الخصم)
-    const vat = net * 0.05;
-    
+    // ✅ VAT الآن قابلاً للتعديل يدوياً، لكن يمكن حساب القيمة الافتراضية إذا كان 0
     // Net with VAT = Net + VAT (المبلغ النهائي بالضريبة - هذا الذي يُضاف للمشروع)
     const netWithVat = net + vat;
     
@@ -142,10 +146,10 @@ export default function CreateVariationPage() {
       consultant_fees: consultant.toFixed(2),
       total_amount: total.toFixed(2),
       net_amount: net.toFixed(2),
-      vat: vat.toFixed(2),
       net_amount_with_vat: netWithVat.toFixed(2),
+      // ✅ لا نعدل VAT تلقائياً - يُترك للمستخدم
     }));
-  }, [formData.final_amount, formData.consultant_fees_percentage, formData.contractor_engineer_fees, formData.discount]);
+  }, [formData.final_amount, formData.consultant_fees_percentage, formData.contractor_engineer_fees, formData.discount, formData.vat]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -187,13 +191,15 @@ export default function CreateVariationPage() {
         await api.patch(`projects/${formData.project}/variations/${variationId}/`, formDataToSend, {
           headers: { "Content-Type": "multipart/form-data" },
         });
+        // ✅ بعد التعديل، العودة إلى صفحة المشروع مع فتح تبويب variations
+        navigate(`/projects/${formData.project}?tab=variations`);
       } else {
         await api.post(`projects/${formData.project}/variations/`, formDataToSend, {
           headers: { "Content-Type": "multipart/form-data" },
         });
+        // ✅ بعد الإضافة، العودة إلى صفحة المشروع مع فتح تبويب variations
+        navigate(`/projects/${formData.project}?tab=variations`);
       }
-
-      navigate("/variations");
     } catch (e) {
       // Error handled by error handler
       alert(e?.response?.data?.detail || e?.response?.data?.message || t("save_error"));
@@ -240,7 +246,13 @@ export default function CreateVariationPage() {
                     getOptionValue={(option) => option.id?.toString()}
                     placeholder={t("select_project") || "Select Project"}
                     isSearchable
+                    isDisabled={!!projectFromQuery} // ✅ تعطيل الاختيار إذا كان project محدد من query parameter
                   />
+                  {projectFromQuery && (
+                    <small style={{ color: "var(--muted)", marginTop: "4px", display: "block" }}>
+                      {t("project_selected_from_sidebar") || "تم اختيار المشروع من القائمة"}
+                    </small>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
@@ -382,18 +394,17 @@ export default function CreateVariationPage() {
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
-                      {t("vat") || "الضريبة (5%)"}
+                      {t("vat") || "الضريبة"}
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       className="prj-input"
                       value={formData.vat}
-                      readOnly
-                      style={{ background: "#e9ecef", cursor: "not-allowed" }}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vat: e.target.value }))}
                     />
                     <small style={{ color: "var(--muted)", marginTop: "4px", display: "block" }}>
-                      {t("vat_note") || "= المبلغ الصافي × 5%"}
+                      {t("vat_note") || "يمكنك إدخال قيمة الضريبة يدوياً"}
                     </small>
                   </div>
                 </div>

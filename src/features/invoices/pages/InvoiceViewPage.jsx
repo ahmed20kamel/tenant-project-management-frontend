@@ -23,29 +23,13 @@ export default function InvoiceViewPage() {
 
   const loadFullProjectData = async (projectId) => {
     try {
-      // Load project details, siteplan (owners), license (consultant), contract
-      const [projectRes, siteplanRes, licenseRes, contractRes] = await Promise.allSettled([
-        api.get(`projects/${projectId}/`),
-        api.get(`projects/${projectId}/siteplan/`),
-        api.get(`projects/${projectId}/license/`),
-        api.get(`projects/${projectId}/contract/`),
-      ]);
-
-      const projectData = projectRes.status === "fulfilled" 
-        ? (Array.isArray(projectRes.value?.data) ? projectRes.value.data[0] : projectRes.value?.data)
-        : null;
+      // ✅ استخدام include parameter لتقليل عدد API calls من 4 إلى 1 فقط
+      const { data: projectData } = await api.get(`projects/${projectId}/?include=siteplan,license,contract`);
       
-      const siteplanData = siteplanRes.status === "fulfilled"
-        ? (Array.isArray(siteplanRes.value?.data) ? siteplanRes.value.data[0] : siteplanRes.value?.data)
-        : null;
-
-      const licenseData = licenseRes.status === "fulfilled"
-        ? (Array.isArray(licenseRes.value?.data) ? licenseRes.value.data[0] : licenseRes.value?.data)
-        : null;
-
-      const contractData = contractRes.status === "fulfilled"
-        ? (Array.isArray(contractRes.value?.data) ? contractRes.value.data[0] : contractRes.value?.data)
-        : null;
+      // ✅ استخراج البيانات المرتبطة من project object
+      const siteplanData = projectData?.siteplan_data || null;
+      const licenseData = projectData?.license_data || null;
+      const contractData = projectData?.contract_data || null;
 
       setProject({
         ...projectData,

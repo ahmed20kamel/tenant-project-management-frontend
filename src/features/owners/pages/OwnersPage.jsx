@@ -42,19 +42,23 @@ export default function OwnersPage() {
   const loadOwners = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: projects } = await api.get("projects/");
+      // ✅ استخدام include parameter لتقليل عدد API calls من N+1 إلى 1 فقط
+      const { data: projects } = await api.get("projects/?include=siteplan");
       const items = Array.isArray(projects) ? projects : (projects?.results || projects?.items || projects?.data || []);
       
       const ownersMap = new Map();
 
-      await Promise.all(
-        items.map(async (p) => {
-          const projectId = p.id;
-          try {
-            const { data: sp } = await api.get(`projects/${projectId}/siteplan/`);
-            const first = Array.isArray(sp) ? sp[0] : null;
-            // ✅ عرض المالك المفوض (Single Source of Truth) وإلا أول مالك
-            if (first?.owners?.length) {
+      // ✅ البيانات موجودة بالفعل في response - لا حاجة لـ Promise.all
+      items.forEach((p) => {
+        const projectId = p.id;
+        if (!projectId) return;
+
+        // ✅ استخدام البيانات من include بدلاً من API call منفصل
+        const siteplanData = p.siteplan_data || null;
+        const first = siteplanData; // siteplan_data هو object واحد وليس array
+        
+        // ✅ عرض المالك المفوض (Single Source of Truth) وإلا أول مالك
+        if (first?.owners?.length) {
               const owner = first.owners.find((o) => o.is_authorized) || first.owners[0];
               // التأكد من وجود owner_name_ar و owner_name_en
               const ownerNameAr = owner?.owner_name_ar || owner?.owner_name || "";
@@ -99,13 +103,18 @@ export default function OwnersPage() {
                 }
               }
             }
-          } catch (e) {}
-        })
-      );
+        });
 
-      const ownersList = Array.from(ownersMap.values()).sort((a, b) => 
-        (a.nameAr || a.name).localeCompare(b.nameAr || b.name, isAR ? "ar" : "en")
-      );
+      const ownersArray = Array.from(ownersMap.values());
+      const sortLocale = i18n.language === "ar" ? "ar" : "en";
+      
+      ownersArray.sort(function(a, b) {
+        const nameA = a.nameAr || a.name || "";
+        const nameB = b.nameAr || b.name || "";
+        return nameA.localeCompare(nameB, sortLocale);
+      });
+      
+      const ownersList = ownersArray;
 
       // إضافة key فريد لكل مالك
       const ownersWithKey = ownersList.map((o) => ({
@@ -121,7 +130,7 @@ export default function OwnersPage() {
     } finally {
       setLoading(false);
     }
-  }, [isAR, t]);
+  }, [i18n, t]);
 
   useEffect(() => {
     loadOwners();

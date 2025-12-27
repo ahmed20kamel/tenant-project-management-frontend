@@ -203,15 +203,7 @@ export default function LicenseStep({ projectId, onPrev, onNext, isView: isViewP
     }
 
     try {
-      // حفظ الاستشاري
-      if (form.design_consultant_name && form.design_consultant_license_no) {
-        saveToList("consultants", {
-          name: form.design_consultant_name,
-          name_en: form.design_consultant_name_en || "",
-          license: form.design_consultant_license_no
-        });
-      }
-
+      // ✅ لا نحفظ الاستشاري في LocalStorage - يتم حفظه في قاعدة البيانات مباشرة من PersonField
       // ✅ لا نحفظ المقاول في LocalStorage - المقاول = الشركة نفسها (بيانات ثابتة)
 
       const payload = buildPayload();

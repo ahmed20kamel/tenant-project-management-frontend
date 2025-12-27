@@ -77,6 +77,12 @@ export default function ConsultantFeesSection({
               label={t("contract.fees.extra_value")}
               value={form[`${prefix}_fee_extra_value`] || "0.00"}
             />
+            {form[`${prefix}_fee_extra_description`] && (
+              <ViewRow
+                label={t("contract.fees.extra_description") || "وصف الأتعاب الإضافية"}
+                value={form[`${prefix}_fee_extra_description`]}
+              />
+            )}
           </>
         )}
       </div>
@@ -169,6 +175,15 @@ export default function ConsultantFeesSection({
             <NumberField
               value={form[`${prefix}_fee_extra_value`]}
               onChange={(v) => setF(`${prefix}_fee_extra_value`, v)}
+            />
+          </Field>
+          <Field label={t("contract.fees.extra_description") || "وصف الأتعاب الإضافية"}>
+            <input
+              className="input"
+              type="text"
+              value={form[`${prefix}_fee_extra_description`] || ""}
+              onChange={(e) => setF(`${prefix}_fee_extra_description`, e.target.value)}
+              placeholder={t("contract.fees.extra_description_placeholder") || "أدخل وصف الأتعاب الإضافية"}
             />
           </Field>
         </>

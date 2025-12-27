@@ -18,7 +18,6 @@ import FileAttachmentView from "../../../../components/file-upload/FileAttachmen
 import FileUpload from "../../../../components/file-upload/FileUpload";
 import DateInput from "../../../../components/fields/DateInput";
 import ContractAttachment from "../components/ContractAttachment";
-import ContractExtension from "../components/ContractExtension";
 import StaticContractAttachmentFile from "../components/StaticContractAttachmentFile";
 import PersonField from "../components/PersonField";
 import useContract from "../../../../hooks/useContract";
@@ -106,8 +105,6 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     }
   };
   const [errorMsg, setErrorMsg] = useState("");
-  const [startOrderFileUrl, setStartOrderFileUrl] = useState("");
-  const [startOrderFileName, setStartOrderFileName] = useState(""); // اسم الملف المحفوظ محلياً
 
   // قوائم ثابتة
   const CONTRACT_CLASSIFICATION = useMemo(
@@ -136,44 +133,9 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     [t]
   );
 
-  // حساب تاريخ نهاية المشروع (يشمل التمديدات)
-  useEffect(() => {
-    if (!form.start_order_date || !form.project_duration_months) return;
-    try {
-      const d = new Date(form.start_order_date);
-      let months = Number(form.project_duration_months);
-      let days = 0;
-      
-      if (isNaN(months) || months < 0) return;
-      
-      // ✅ إضافة التمديدات
-      if (Array.isArray(form.extensions) && form.extensions.length > 0) {
-        form.extensions.forEach((ext) => {
-          if (ext.months) {
-            months += Number(ext.months) || 0;
-          }
-          if (ext.days) {
-            days += Number(ext.days) || 0;
-          }
-        });
-      }
-      
-      // ✅ إضافة الشهور
-      d.setMonth(d.getMonth() + months);
-      // ✅ إضافة الأيام
-      if (days > 0) {
-        d.setDate(d.getDate() + days);
-      }
-      
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const end = `${yyyy}-${mm}-${dd}`;
-      if (end !== form.project_end_date) {
-        setF("project_end_date", end);
-      }
-    } catch {}
-  }, [form.start_order_date, form.project_duration_months, form.extensions, setF]);
+  // ملاحظة: حساب project_end_date يجب أن يتم بناءً على start_order_date من StartOrder model
+  // هذا الحساب يتم في backend أو في صفحة عرض المشروع
+  // تم إزالة الحساب هنا لأن start_order_date لم يعد موجود في Contract model
 
   // حساب تمويل المالك تلقائيًا
   useEffect(() => {
@@ -195,10 +157,6 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         const { data } = await api.get(`projects/${projectId}/contract/`);
         if (Array.isArray(data) && data.length > 0) {
           const contractData = data[0];
-          if (contractData.start_order_file) {
-            setStartOrderFileUrl(contractData.start_order_file);
-            setStartOrderFileName(contractData.start_order_file_name || extractFileNameFromUrl(contractData.start_order_file));
-          }
 
           // ✅ تحديث المرفقات الديناميكية بعد الحفظ لضمان حفظ السعر وروابط الملفات
           if (contractData.attachments && Array.isArray(contractData.attachments)) {
@@ -283,23 +241,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("contract_explanation_file_name", fileName);
           }
           
-          // ✅ تحميل التمديدات من API
-          if (contractData.extensions && Array.isArray(contractData.extensions) && contractData.extensions.length > 0) {
-            const loadedExtensions = contractData.extensions.map(ext => ({
-              reason: ext.reason || "",
-              days: ext.days || 0,
-              months: ext.months || 0,
-              extension_date: ext.extension_date || "",
-              approval_number: ext.approval_number || "",
-              file: null, // لا نحمل File object
-              file_url: ext.file_url || null,
-              file_name: ext.file_name || (ext.file_url ? extractFileNameFromUrl(ext.file_url) : null),
-            }));
-            setF("extensions", loadedExtensions);
-          } else {
-            // ✅ إذا لم تكن هناك تمديدات، نضع قائمة فارغة
-            setF("extensions", []);
-          }
+          // ✅ تم إزالة تحميل التمديدات - التمديدات الآن في StartOrder
           
           // ✅ تحميل المرفقات الثابتة في form state
           if (contractData.quantities_table_file) {
@@ -323,6 +265,32 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("price_offer_file_url", url);
             setF("price_offer_file_name", fileName);
           }
+          // ✅ تحميل المخططات التعاقدية (المقسمة)
+          if (contractData.mep_drawings_file) {
+            const url = contractData.mep_drawings_file;
+            const fileName = contractData.mep_drawings_file_name || extractFileNameFromUrl(url);
+            setF("mep_drawings_file_url", url);
+            setF("mep_drawings_file_name", fileName);
+          }
+          if (contractData.architectural_drawings_file) {
+            const url = contractData.architectural_drawings_file;
+            const fileName = contractData.architectural_drawings_file_name || extractFileNameFromUrl(url);
+            setF("architectural_drawings_file_url", url);
+            setF("architectural_drawings_file_name", fileName);
+          }
+          if (contractData.structural_drawings_file) {
+            const url = contractData.structural_drawings_file;
+            const fileName = contractData.structural_drawings_file_name || extractFileNameFromUrl(url);
+            setF("structural_drawings_file_url", url);
+            setF("structural_drawings_file_name", fileName);
+          }
+          if (contractData.decoration_drawings_file) {
+            const url = contractData.decoration_drawings_file;
+            const fileName = contractData.decoration_drawings_file_name || extractFileNameFromUrl(url);
+            setF("decoration_drawings_file_url", url);
+            setF("decoration_drawings_file_name", fileName);
+          }
+          // ⚠️ الحقل القديم - للتوافق فقط
           if (contractData.contractual_drawings_file) {
             const url = contractData.contractual_drawings_file;
             const fileName = contractData.contractual_drawings_file_name || extractFileNameFromUrl(url);
@@ -451,16 +419,6 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       }
     }
 
-    // التحقق من أمر المباشرة إذا كان موجود
-    if (form.has_start_order === "yes") {
-      if (!form.start_order_file && !startOrderFileUrl) {
-        throw new Error(t("start_order_required"));
-      }
-      if (!form.start_order_date) {
-        throw new Error(t("contract.errors.select_date"));
-      }
-    }
-
     // ✅ تصفية الملاك لإرسال المالك المفوض فقط
     const authorizedOwners = (form.owners || []).filter(o => o.is_authorized === true);
     
@@ -484,41 +442,18 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       owner_fee_supervision_percent: num(form.owner_fee_supervision_percent, 0),
       owner_fee_extra_mode: form.owner_fee_extra_mode || "percent",
       owner_fee_extra_value: num(form.owner_fee_extra_value, 0),
+      owner_fee_extra_description: form.owner_fee_extra_description || "",
       bank_includes_consultant: toBool(form.bank_includes_consultant),
       bank_fee_design_percent: num(form.bank_fee_design_percent, 0),
       bank_fee_supervision_percent: num(form.bank_fee_supervision_percent, 0),
       bank_fee_extra_mode: form.bank_fee_extra_mode || "percent",
       bank_fee_extra_value: num(form.bank_fee_extra_value, 0),
-      start_order_exists: toBool(form.has_start_order),
-      start_order_date: form.start_order_date || null,
-      start_order_notes: form.start_order_notes || "",
+      bank_fee_extra_description: form.bank_fee_extra_description || "",
       project_end_date: form.project_end_date || null,
       general_notes: form.general_notes || "",
     };
 
-    // ✅ تنظيف التمديدات قبل الإرسال
-    const cleanExtensions = (form.extensions || [])
-      .filter(ext => {
-        // ✅ إزالة التمديدات الفارغة تماماً
-        if (!ext || (typeof ext !== "object")) return false;
-        // ✅ إزالة التمديدات التي لا تحتوي على أي بيانات
-        const hasReason = ext.reason && String(ext.reason).trim() !== "";
-        const hasDays = ext.days !== undefined && ext.days !== null && Number(ext.days) > 0;
-        const hasMonths = ext.months !== undefined && ext.months !== null && Number(ext.months) > 0;
-        const hasDate = ext.extension_date && String(ext.extension_date).trim() !== "";
-        const hasApproval = ext.approval_number && String(ext.approval_number).trim() !== "";
-        const hasFile = ext.file instanceof File || (ext.file_url && String(ext.file_url).trim() !== "");
-        return hasReason || hasDays || hasMonths || hasDate || hasApproval || hasFile;
-      })
-      .map(ext => ({
-        reason: String(ext.reason || "").trim(),
-        days: Number(ext.days) || 0,
-        months: Number(ext.months) || 0,
-        extension_date: toIsoDate(ext.extension_date) || null,
-        approval_number: String(ext.approval_number || "").trim() || null,
-        file_url: ext.file_url || null,
-        file_name: ext.file_name || null,
-      }));
+    // ✅ تم إزالة معالجة التمديدات - التمديدات الآن في StartOrder
 
     // ✅ دائماً نستخدم FormData (حتى لو لم يكن هناك ملفات) لضمان إرسال owners بشكل صحيح
     const fd = new FormData();
@@ -526,7 +461,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     // إضافة الحقول النصية
     Object.entries(jsonPayload).forEach(([k, v]) => {
       // تخطي الملفات - سنضيفها لاحقاً
-      if (k === "start_order_file" || k === "contract_file" || 
+      if (k === "contract_file" || 
           k === "contract_appendix_file" || k === "contract_explanation_file") {
         return;
       }
@@ -554,25 +489,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       }
     });
     
-    // ✅ إضافة التمديدات بعد التنظيف
-    fd.append("extensions", JSON.stringify(cleanExtensions));
-    
-    // ✅ إضافة ملفات التمديدات الجديدة
-    // ✅ نستخدم cleanExtensions للفهرس لأنها المصفوفة المصفاة التي سيتم إرسالها
-    cleanExtensions.forEach((cleanExt, cleanIdx) => {
-      // ✅ البحث عن التمديد المقابل في form.extensions الذي يحتوي على ملف
-      const originalExt = form.extensions?.find((ext, origIdx) => {
-        if (!ext || !(ext.file instanceof File)) return false;
-        // ✅ مطابقة التمديد بناءً على البيانات الأساسية
-        return String(ext.reason || "").trim() === cleanExt.reason &&
-               (Number(ext.days) || 0) === cleanExt.days &&
-               (Number(ext.months) || 0) === cleanExt.months;
-      });
-      
-      if (originalExt && originalExt.file instanceof File) {
-        fd.append(`extensions[${cleanIdx}][file]`, originalExt.file, originalExt.file.name);
-      }
-    });
+    // ✅ تم إزالة إرسال التمديدات - التمديدات الآن في StartOrder
     
     // ✅ إضافة المرفقات الديناميكية (مع التنظيف)
     // ✅ العقد الأصيل (contract_file) له قسم مستقل ولا يجب أن يكون في attachments
@@ -618,9 +535,6 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     }
     
     // إضافة الملفات القديمة (للتوافق)
-    if (form.start_order_file && form.start_order_file instanceof File) {
-      fd.append("start_order_file", form.start_order_file);
-    }
     if (form.contract_file && form.contract_file instanceof File) {
       fd.append("contract_file", form.contract_file);
     }
@@ -641,6 +555,20 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     if (form.price_offer_file && form.price_offer_file instanceof File) {
       fd.append("price_offer_file", form.price_offer_file);
     }
+    // ✅ إضافة المخططات التعاقدية (المقسمة)
+    if (form.mep_drawings_file && form.mep_drawings_file instanceof File) {
+      fd.append("mep_drawings_file", form.mep_drawings_file);
+    }
+    if (form.architectural_drawings_file && form.architectural_drawings_file instanceof File) {
+      fd.append("architectural_drawings_file", form.architectural_drawings_file);
+    }
+    if (form.structural_drawings_file && form.structural_drawings_file instanceof File) {
+      fd.append("structural_drawings_file", form.structural_drawings_file);
+    }
+    if (form.decoration_drawings_file && form.decoration_drawings_file instanceof File) {
+      fd.append("decoration_drawings_file", form.decoration_drawings_file);
+    }
+    // ⚠️ الحقل القديم - للتوافق فقط
     if (form.contractual_drawings_file && form.contractual_drawings_file instanceof File) {
       fd.append("contractual_drawings_file", form.contractual_drawings_file);
     }
@@ -662,7 +590,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       // ✅ طباعة payload للتحقق (في وضع التطوير فقط)
       if (process.env.NODE_ENV === "development") {
         console.log("=== Contract Payload Debug ===");
-        console.log("Extensions:", payload.get("extensions"));
+        // ✅ تم إزالة طباعة التمديدات - التمديدات الآن في StartOrder
         console.log("Attachments:", payload.get("attachments"));
         console.log("Owners:", payload.get("owners"));
         // طباعة جميع المفاتيح
@@ -671,14 +599,16 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       
       const isHousing = form.contract_classification === "housing_loan_program";
       const hasFiles = 
-        (form.start_order_file && form.start_order_file instanceof File) ||
         (form.contract_file && form.contract_file instanceof File) ||
         (form.contract_appendix_file && form.contract_appendix_file instanceof File) ||
         (form.contract_explanation_file && form.contract_explanation_file instanceof File) ||
         (form.quantities_table_file && form.quantities_table_file instanceof File) ||
         (form.approved_materials_table_file && form.approved_materials_table_file instanceof File) ||
         (form.price_offer_file && form.price_offer_file instanceof File) ||
-        (form.contractual_drawings_file && form.contractual_drawings_file instanceof File) ||
+        (form.mep_drawings_file && form.mep_drawings_file instanceof File) ||
+        (form.architectural_drawings_file && form.architectural_drawings_file instanceof File) ||
+        (form.structural_drawings_file && form.structural_drawings_file instanceof File) ||
+        (form.decoration_drawings_file && form.decoration_drawings_file instanceof File) ||
         (form.general_specifications_file && form.general_specifications_file instanceof File);
       
       if (existingId) {
@@ -694,10 +624,6 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         const { data } = await api.get(`projects/${projectId}/contract/`);
         if (Array.isArray(data) && data.length > 0) {
           const contractData = data[0];
-          if (contractData.start_order_file) {
-            setStartOrderFileUrl(contractData.start_order_file);
-            setStartOrderFileName(contractData.start_order_file_name || extractFileNameFromUrl(contractData.start_order_file));
-          }
           // ✅ تحديث ملفات العقد في form state بعد الحفظ
           if (contractData.contract_file) {
             const url = contractData.contract_file;
@@ -740,6 +666,32 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("price_offer_file_url", url);
             setF("price_offer_file_name", fileName);
           }
+          // ✅ تحديث المخططات التعاقدية (المقسمة) بعد الحفظ
+          if (contractData.mep_drawings_file) {
+            const url = contractData.mep_drawings_file;
+            const fileName = contractData.mep_drawings_file_name || extractFileNameFromUrl(url);
+            setF("mep_drawings_file_url", url);
+            setF("mep_drawings_file_name", fileName);
+          }
+          if (contractData.architectural_drawings_file) {
+            const url = contractData.architectural_drawings_file;
+            const fileName = contractData.architectural_drawings_file_name || extractFileNameFromUrl(url);
+            setF("architectural_drawings_file_url", url);
+            setF("architectural_drawings_file_name", fileName);
+          }
+          if (contractData.structural_drawings_file) {
+            const url = contractData.structural_drawings_file;
+            const fileName = contractData.structural_drawings_file_name || extractFileNameFromUrl(url);
+            setF("structural_drawings_file_url", url);
+            setF("structural_drawings_file_name", fileName);
+          }
+          if (contractData.decoration_drawings_file) {
+            const url = contractData.decoration_drawings_file;
+            const fileName = contractData.decoration_drawings_file_name || extractFileNameFromUrl(url);
+            setF("decoration_drawings_file_url", url);
+            setF("decoration_drawings_file_name", fileName);
+          }
+          // ⚠️ الحقل القديم - للتوافق فقط
           if (contractData.contractual_drawings_file) {
             const url = contractData.contractual_drawings_file;
             const fileName = contractData.contractual_drawings_file_name || extractFileNameFromUrl(url);
@@ -753,27 +705,13 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("general_specifications_file_name", fileName);
           }
           
-          // ✅ تحديث التمديدات بعد الحفظ (لتحميل file_url و file_name)
-          if (contractData.extensions && Array.isArray(contractData.extensions) && contractData.extensions.length > 0) {
-            const updatedExtensions = contractData.extensions.map(ext => ({
-              reason: ext.reason || "",
-              days: ext.days || 0,
-              months: ext.months || 0,
-              extension_date: ext.extension_date || "",
-              approval_number: ext.approval_number || "",
-              file: null, // لا نحمل File object
-              file_url: ext.file_url || null,
-              file_name: ext.file_name || (ext.file_url ? extractFileNameFromUrl(ext.file_url) : null),
-            }));
-            setF("extensions", updatedExtensions);
-          }
+          // ✅ تم إزالة تحديث التمديدات - التمديدات الآن في StartOrder
         }
       } catch (e) {
         console.error("Error loading contract file URLs:", e);
       }
       
       // إزالة File objects من form بعد الحفظ الناجح
-      if (form.start_order_file instanceof File) setF("start_order_file", null);
       if (form.contract_file instanceof File) setF("contract_file", null);
       if (form.contract_appendix_file instanceof File) setF("contract_appendix_file", null);
       if (form.contract_explanation_file instanceof File) setF("contract_explanation_file", null);
@@ -781,7 +719,11 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       if (form.quantities_table_file instanceof File) setF("quantities_table_file", null);
       if (form.approved_materials_table_file instanceof File) setF("approved_materials_table_file", null);
       if (form.price_offer_file instanceof File) setF("price_offer_file", null);
-      if (form.contractual_drawings_file instanceof File) setF("contractual_drawings_file", null);
+      // ✅ إزالة File objects للمخططات التعاقدية (المقسمة)
+      if (form.mep_drawings_file instanceof File) setF("mep_drawings_file", null);
+      if (form.architectural_drawings_file instanceof File) setF("architectural_drawings_file", null);
+      if (form.structural_drawings_file instanceof File) setF("structural_drawings_file", null);
+      if (form.decoration_drawings_file instanceof File) setF("decoration_drawings_file", null);
       if (form.general_specifications_file instanceof File) setF("general_specifications_file", null);
       
       // ✅ إرسال حدث لتحديث بيانات المشروع في WizardPage
@@ -824,8 +766,8 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
 
   const isHousing = form.contract_classification === "housing_loan_program";
   const isPrivateFunding = form.contract_classification === "private_funding";
-  // ✅ للقرض السكني: إذا كان هناك onNext، نعرض "حفظ و التالي"، وإلا "حفظ"
-  const finishLabel = isHousing && onNext ? `${t("save_next")} →` : (isHousing ? t("save") : t("finish"));
+  // ✅ كل المشاريع تعرض "إنهاء" عند العقد بغض النظر عن نوع التصنيف
+  const finishLabel = t("finish");
 
   return (
     <WizardShell title={t("contract.title")}>
@@ -1447,16 +1389,71 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
               endpoint={`projects/${projectId}/contract/`}
             />
             
+            {/* ✅ المخططات التعاقدية (مقسمة إلى 4 أنواع) */}
             <StaticContractAttachmentFile
-              label="4) مخططات تعاقدية"
-              value={form.contractual_drawings_file}
-              fileUrl={form.contractual_drawings_file_url}
-              fileName={form.contractual_drawings_file_name}
-              onChange={(file) => setF("contractual_drawings_file", file)}
+              label="4-أ) مخططات MEP"
+              value={form.mep_drawings_file}
+              fileUrl={form.mep_drawings_file_url}
+              fileName={form.mep_drawings_file_name}
+              onChange={(file) => setF("mep_drawings_file", file)}
               onRemoveExisting={() => {
-                setF("contractual_drawings_file_url", null);
-                setF("contractual_drawings_file_name", null);
-                setF("contractual_drawings_file", null);
+                setF("mep_drawings_file_url", null);
+                setF("mep_drawings_file_name", null);
+                setF("mep_drawings_file", null);
+              }}
+              accept=".pdf,.dwg,.dxf"
+              maxSizeMB={10}
+              isView={viewMode}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/contract/`}
+            />
+            
+            <StaticContractAttachmentFile
+              label="4-ب) المخططات المعمارية"
+              value={form.architectural_drawings_file}
+              fileUrl={form.architectural_drawings_file_url}
+              fileName={form.architectural_drawings_file_name}
+              onChange={(file) => setF("architectural_drawings_file", file)}
+              onRemoveExisting={() => {
+                setF("architectural_drawings_file_url", null);
+                setF("architectural_drawings_file_name", null);
+                setF("architectural_drawings_file", null);
+              }}
+              accept=".pdf,.dwg,.dxf"
+              maxSizeMB={10}
+              isView={viewMode}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/contract/`}
+            />
+            
+            <StaticContractAttachmentFile
+              label="4-ج) المخططات الإنشائية"
+              value={form.structural_drawings_file}
+              fileUrl={form.structural_drawings_file_url}
+              fileName={form.structural_drawings_file_name}
+              onChange={(file) => setF("structural_drawings_file", file)}
+              onRemoveExisting={() => {
+                setF("structural_drawings_file_url", null);
+                setF("structural_drawings_file_name", null);
+                setF("structural_drawings_file", null);
+              }}
+              accept=".pdf,.dwg,.dxf"
+              maxSizeMB={10}
+              isView={viewMode}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/contract/`}
+            />
+            
+            <StaticContractAttachmentFile
+              label="4-د) مخططات الديكور"
+              value={form.decoration_drawings_file}
+              fileUrl={form.decoration_drawings_file_url}
+              fileName={form.decoration_drawings_file_name}
+              onChange={(file) => setF("decoration_drawings_file", file)}
+              onRemoveExisting={() => {
+                setF("decoration_drawings_file_url", null);
+                setF("decoration_drawings_file_name", null);
+                setF("decoration_drawings_file", null);
               }}
               accept=".pdf,.dwg,.dxf"
               maxSizeMB={10}
@@ -1610,217 +1607,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       </div>
       </div>
 
-      {/* 8) أمر المباشرة */}
-      <div className="wizard-section">
-        <h4 className="wizard-section-title">8) {t("start_order_title")}</h4>
-        {viewMode ? (
-          <div className="form-grid cols-3" style={{ gap: "var(--space-4)" }}>
-            <ViewRow
-              label={t("start_order_exists")}
-              value={form.has_start_order === "yes" ? t("yes") : t("no")}
-            />
-            {form.has_start_order === "yes" && (
-              <>
-                <Field label={t("start_order_file")}>
-                  <FileAttachmentView
-                    fileUrl={startOrderFileUrl}
-                    fileName={startOrderFileName || (startOrderFileUrl ? extractFileNameFromUrl(startOrderFileUrl) : "") || (form.start_order_file?.name || "")}
-                    projectId={projectId}
-                    endpoint={`projects/${projectId}/contract/`}
-                  />
-                </Field>
-                <ViewRow label={t("start_order_date")} value={formatDate(form.start_order_date, i18next.language)} />
-                <ViewRow 
-                  label={t("project_end_date_calculated")} 
-                  value={formatDate(form.project_end_date, i18next.language)}
-                  style={{
-                    padding: "16px",
-                    background: "var(--primary-light, rgba(59, 130, 246, 0.1))",
-                    borderRadius: "8px",
-                    border: "2px solid var(--primary, #3b82f6)",
-                    fontWeight: "600",
-                    fontSize: "16px",
-                    minHeight: "48px"
-                  }}
-                />
-                {form.start_order_notes ? (
-                  <ViewRow
-                    label={t("start_order_notes")}
-                    value={form.start_order_notes}
-                  />
-                ) : null}
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="form-grid cols-3" style={{ gap: "var(--space-4)" }}>
-          <Field label={t("start_order_exists")}>
-            <YesNoChips
-              value={form.has_start_order}
-              onChange={(v) => setF("has_start_order", v)}
-            />
-          </Field>
-          {form.has_start_order === "yes" && (
-            <>
-              <Field label={t("attach_start_order")}>
-                <div className="row row--align-center row--gap-8">
-                  <div style={{ flex: 1 }}>
-                    <FileUpload
-                      value={form.start_order_file}
-                      onChange={(file) => {
-                        setF("start_order_file", file);
-                        if (file) {
-                          setStartOrderFileName(file.name);
-                        }
-                      }}
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      maxSizeMB={10}
-                      showPreview={true}
-                      existingFileUrl={startOrderFileUrl}
-                      existingFileName={startOrderFileName || (startOrderFileUrl ? extractFileNameFromUrl(startOrderFileUrl) : "")}
-                      onRemoveExisting={() => {
-                        setF("start_order_file", null);
-                        setStartOrderFileName("");
-                      }}
-                      compressionOptions={{
-                        maxSizeMB: 1,
-                        maxWidthOrHeight: 1920,
-                      }}
-                    />
-                  </div>
-                  <InfoTip align="start" text={t("start_order_required")} />
-                </div>
-              </Field>
-              {/* عرض حقول التاريخ إذا كان هناك ملف (جديد أو موجود سابقاً) */}
-              {(form.start_order_file || startOrderFileUrl) && (
-                <>
-                  <Field label={t("start_order_date")}>
-                    <DateInput
-                      className="input"
-                      value={form.start_order_date || ""}
-                      onChange={(value) => setF("start_order_date", value)}
-                    />
-                  </Field>
-                  <Field label={t("project_end_date_calculated")}>
-                    <input
-                      className="input"
-                      value={form.project_end_date}
-                      readOnly
-                      style={{
-                        background: "var(--primary-light, rgba(59, 130, 246, 0.1))",
-                        color: "var(--text)",
-                        cursor: "default",
-                        border: "2px solid var(--primary, #3b82f6)",
-                        borderRadius: "8px",
-                        padding: "16px",
-                        fontSize: "16px",
-                        fontWeight: "600",
-                        minHeight: "48px"
-                      }}
-                    />
-                  </Field>
-                <Field label={t("start_order_notes")}>
-                  <textarea
-                    className="input"
-                    rows={4}
-                    value={form.start_order_notes || ""}
-                    onChange={(e) => setF("start_order_notes", e.target.value)}
-                    placeholder={t("start_order_notes_placeholder") || ""}
-                  />
-                </Field>
-                </>
-              )}
-            </>
-          )}
-          </div>
-        )}
-      </div>
-
-      {/* 8) التمديدات */}
-      <div className="wizard-section">
-        <h4 className="wizard-section-title">8) التمديدات</h4>
-        {viewMode ? (
-          <div>
-            {form.extensions && form.extensions.length > 0 ? (
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "var(--space-4)"
-              }}>
-                {form.extensions.map((ext, idx) => (
-                  <ContractExtension
-                    key={idx}
-                    extension={ext}
-                    index={idx}
-                    extensionIndex={idx}
-                    isView={true}
-                    onUpdate={() => {}}
-                    onRemove={() => {}}
-                    canRemove={false}
-                    projectId={projectId}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="card text-center prj-muted p-20">
-                لا توجد تمديدات
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            {form.extensions && form.extensions.length > 0 && (
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "var(--space-4)"
-              }}>
-                {form.extensions.map((ext, idx) => (
-                  <ContractExtension
-                    key={idx}
-                    extension={ext}
-                    index={idx}
-                    extensionIndex={idx}
-                    isView={false}
-                    onUpdate={(extIndex, field, value) => {
-                      const updated = [...form.extensions];
-                      updated[extIndex] = { ...updated[extIndex], [field]: value };
-                      setF("extensions", updated);
-                    }}
-                    onRemove={(extIndex) => {
-                      const updated = form.extensions.filter((_, i) => i !== extIndex);
-                      setF("extensions", updated);
-                    }}
-                    canRemove={true}
-                    projectId={projectId}
-                  />
-                ))}
-              </div>
-            )}
-            <div className={`row ${isAR ? "row--justify-start" : "row--justify-end"} mt-8`}>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const newExtension = {
-                    reason: "",
-                    days: 0,
-                    months: 0,
-                    extension_date: "",
-                    approval_number: "",
-                    file: null,
-                    file_url: null,
-                    file_name: null,
-                  };
-                  setF("extensions", [...(form.extensions || []), newExtension]);
-                }}
-                style={{ background: "#f97316", color: "white" }}
-              >
-                + إضافة تمديد جديد
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* ✅ تم إزالة قسم التمديدات - التمديدات الآن في تبويب منفصل في ProjectView */}
 
       {/* 9) الملاحظات العامة */}
       <div className="wizard-section">

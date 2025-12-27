@@ -16,9 +16,8 @@ export default function AdminNavbar() {
 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
-
   // Get current user from AuthContext
-  const currentUser = user?.email || user?.get_full_name || (isRTL ? "Super Admin" : "Super Admin");
+  const currentUser = user?.email || user?.get_full_name || t("super_admin");
 
   return (
     <header 
@@ -66,14 +65,14 @@ export default function AdminNavbar() {
               color: '#1e40af',
               lineHeight: '1.2'
             }}>
-              {isRTL ? "لوحة تحكم السوبر أدمن" : "Super Admin Panel"}
+              {t("super_admin_panel")}
             </div>
             <div style={{ 
               fontSize: 'var(--font-size-xs)', 
               color: '#6b7280',
               lineHeight: '1.2'
             }}>
-              {isRTL ? "إدارة النظام" : "System Administration"}
+              {t("system_administration")}
             </div>
           </div>
         </Link>

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { api } from "../../../../services/api";
 import InfoTip from "./InfoTip";
 import { formatMoney } from "../../../../utils/formatters";
@@ -8,25 +9,39 @@ import { n, round, feeInclusive } from "../../../../utils/contractFinancial";
 /* =================== Main =================== */
 export default function ContractFinancialSummary({ projectId }) {
   const { t, i18n } = useTranslation();
+  const location = useLocation();
   const isAR = /^ar\b/i.test(i18n.language || "");
   const [contract, setContract] = useState(null);
+  const [variations, setVariations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // تحميل العقد
-  useEffect(() => {
+  // دالة تحميل البيانات
+  const loadData = useCallback(async () => {
     if (!projectId) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    api
-      .get(`projects/${projectId}/contract/`)
-      .then(({ data }) => {
-        if (Array.isArray(data) && data.length) setContract(data[0]);
-        else if (data && typeof data === "object") setContract(data);
+    Promise.all([
+      api.get(`projects/${projectId}/contract/`).catch(() => ({ data: null })),
+      api.get(`projects/${projectId}/variations/`).catch(() => ({ data: [] }))
+    ])
+      .then(([contractRes, variationsRes]) => {
+        const contractData = contractRes.data;
+        if (Array.isArray(contractData) && contractData.length) setContract(contractData[0]);
+        else if (contractData && typeof contractData === "object") setContract(contractData);
         else setContract(null);
+        
+        const variationsData = variationsRes.data;
+        if (Array.isArray(variationsData)) {
+          setVariations(variationsData);
+        } else if (variationsData && Array.isArray(variationsData.results)) {
+          setVariations(variationsData.results);
+        } else {
+          setVariations([]);
+        }
       })
       .catch((e) => {
         // ✅ معالجة أفضل للأخطاء - منع عرض HTML الخام
@@ -62,18 +77,53 @@ export default function ContractFinancialSummary({ projectId }) {
       .finally(() => setLoading(false));
   }, [projectId, t]);
 
+  // تحميل العقد والـ Variations عند التحميل الأولي وعند تغيير الموقع (فتح الصفحة)
+  useEffect(() => {
+    loadData();
+  }, [loadData, location.pathname]);
+
+  // ✅ الاستماع لحدث contract-updated لإعادة تحميل البيانات عند تحديث العقد
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const handleContractUpdate = (event) => {
+      if (event.detail?.projectId === projectId) {
+        loadData();
+      }
+    };
+
+    window.addEventListener("contract-updated", handleContractUpdate);
+
+    return () => {
+      window.removeEventListener("contract-updated", handleContractUpdate);
+    };
+  }, [projectId, loadData]);
+
   // كل الحسابات تتم هنا بشكل آمن
   const computed = useMemo(() => {
     try {
       if (!contract) return { error: null, data: null };
 
       const c = contract;
+      
+      // ✅ حساب إجمالي Variations (net_amount_with_vat)
+      const totalVariationsAmount = variations.reduce((sum, v) => {
+        return sum + (parseFloat(v.net_amount_with_vat) || 0);
+      }, 0);
 
       // إجماليات
       const grossTotal = n(c.total_project_value);
       const grossBank =
         c.contract_classification === "housing_loan_program" ? n(c.total_bank_value) : 0;
-      const grossOwner = n(c.total_owner_value) || Math.max(0, grossTotal - grossBank);
+      
+      // ✅ حساب حصة المالك: للقرض السكني = الفرق، للتمويل الخاص = الإجمالي
+      const calculatedOwner = c.contract_classification === "housing_loan_program" 
+        ? Math.max(0, grossTotal - grossBank)  // ✅ للقرض السكني: الفرق
+        : grossTotal;  // ✅ للتمويل الخاص: الإجمالي كامل
+      
+      // ✅ استخدام القيمة المحفوظة إذا كانت صحيحة (تساوي القيمة المحسوبة)، وإلا استخدام القيمة المحسوبة
+      const savedOwner = n(c.total_owner_value);
+      const grossOwner = (Math.abs(savedOwner - calculatedOwner) < 0.01) ? savedOwner : calculatedOwner;
 
       // نسب الاستشاري
       const ownerIncludes = c.owner_includes_consultant === true || c.owner_includes_consultant === "yes";
@@ -89,20 +139,99 @@ export default function ContractFinancialSummary({ projectId }) {
           (c.bank_fee_extra_mode === "percent" ? n(c.bank_fee_extra_value) : 0)
         : 0;
 
-      const totalPct =
-        ownerPct && bankPct && Math.abs(ownerPct - bankPct) < 1e-6
-          ? ownerPct
-          : ownerPct || bankPct || 0;
+      // ✅ حساب totalPct للإجمالي فقط (للعرض في الجدول الكلي)
+      // إذا كانت النسب متساوية، نستخدمها، وإلا نستخدم المتوسط المرجح
+      let totalPct = 0;
+      if (ownerPct > 0 && bankPct > 0 && Math.abs(ownerPct - bankPct) < 1e-6) {
+        // النسب متساوية
+        totalPct = ownerPct;
+      } else if (ownerPct > 0 && bankPct > 0) {
+        // النسب مختلفة - نحسب المتوسط المرجح بناءً على المبالغ
+        const totalFees = (grossOwner * ownerPct / (100 + ownerPct)) + (grossBank * bankPct / (100 + bankPct));
+        const totalNet = grossTotal - totalFees;
+        if (totalNet > 0) {
+          totalPct = (totalFees / totalNet) * 100;
+        }
+      } else {
+        // واحد فقط له نسبة
+        totalPct = ownerPct || bankPct || 0;
+      }
 
-      // تفكيك الأتعاب من الإجماليات
+      // ✅ تفكيك الأتعاب من الإجماليات - كل جزء يستخدم نسبته الخاصة فقط
       const total = feeInclusive(grossTotal, totalPct);
-      const bank = feeInclusive(grossBank, bankPct || totalPct);
-      const owner = feeInclusive(grossOwner, ownerPct || totalPct);
+      const bank = feeInclusive(grossBank, bankPct); // ✅ استخدام bankPct مباشرة فقط
+      const owner = feeInclusive(grossOwner, ownerPct); // ✅ استخدام ownerPct مباشرة فقط
+
+      // ✅ حساب الأتعاب الإضافية بالضريبة (5%)
+      // للمالك
+      let ownerExtraFee = 0;
+      let ownerExtraFeeWithVat = 0;
+      if (ownerIncludes && c.owner_fee_extra_value && n(c.owner_fee_extra_value) > 0) {
+        if (c.owner_fee_extra_mode === "percent") {
+          // إذا كانت نسبة: تُحسب من المبلغ بعد خصم الأتعاب الأساسية
+          ownerExtraFee = round(owner.net * (n(c.owner_fee_extra_value) / 100));
+        } else {
+          // إذا كانت مبلغ ثابت: تُستخدم القيمة مباشرة
+          ownerExtraFee = n(c.owner_fee_extra_value);
+        }
+        // إضافة الضريبة 5%
+        ownerExtraFeeWithVat = round(ownerExtraFee * 1.05);
+      }
+
+      // للبنك
+      let bankExtraFee = 0;
+      let bankExtraFeeWithVat = 0;
+      if (bankIncludes && c.bank_fee_extra_value && n(c.bank_fee_extra_value) > 0) {
+        if (c.bank_fee_extra_mode === "percent") {
+          // إذا كانت نسبة: تُحسب من المبلغ بعد خصم الأتعاب الأساسية
+          bankExtraFee = round(bank.net * (n(c.bank_fee_extra_value) / 100));
+        } else {
+          // إذا كانت مبلغ ثابت: تُستخدم القيمة مباشرة
+          bankExtraFee = n(c.bank_fee_extra_value);
+        }
+        // إضافة الضريبة 5%
+        bankExtraFeeWithVat = round(bankExtraFee * 1.05);
+      }
+
+      // ✅ خصم الأتعاب الإضافية من المبلغ النهائي (بالضريبة)
+      const ownerFinal = {
+        fee: owner.fee,
+        net: owner.net - ownerExtraFeeWithVat, // ✅ خصم الأتعاب الإضافية بالضريبة
+        extraFee: ownerExtraFee,
+        extraFeeWithVat: ownerExtraFeeWithVat,
+        extraDescription: c.owner_fee_extra_description || ""
+      };
+
+      const bankFinal = {
+        fee: bank.fee,
+        net: bank.net - bankExtraFeeWithVat, // ✅ خصم الأتعاب الإضافية بالضريبة
+        extraFee: bankExtraFee,
+        extraFeeWithVat: bankExtraFeeWithVat,
+        extraDescription: c.bank_fee_extra_description || ""
+      };
+
+      const totalExtraFee = ownerExtraFee + bankExtraFee;
+      const totalExtraFeeWithVat = ownerExtraFeeWithVat + bankExtraFeeWithVat;
+      // ✅ إجمالي أتعاب الاستشاري = مجموع أتعاب البنك + أتعاب المالك (وليس من totalPct)
+      const totalConsultantFee = bank.fee + owner.fee;
+      const totalFinal = {
+        fee: totalConsultantFee, // ✅ استخدام مجموع أتعاب البنك والمالك مباشرة
+        net: total.net - totalExtraFeeWithVat, // ✅ خصم الأتعاب الإضافية بالضريبة
+        extraFee: totalExtraFee,
+        extraFeeWithVat: totalExtraFeeWithVat
+      };
+
+      // ✅ إضافة Variations إلى مبلغ المقاولة الفعلية
+      // totalFinal.net = مبلغ المقاولة الفعلية من العقد (بعد خصم الأتعاب الإضافية)
+      // totalVariationsAmount = إجمالي Variations
+      // actualContractorAmount = المبلغ الفعلي للمقاول (العقد + Variations)
+      const actualContractorAmount = totalFinal.net + totalVariationsAmount;
 
       // حساب المبلغ المستحق للمقاول (Payable Amount to Contractor)
       // المالك يدفع المبلغ الكامل (شامل أتعاب الاستشاري)، البنك يدفع المبلغ بعد خصم أتعاب الاستشاري
-      // Payable Amount = grossOwner (full) + bank.net (after fees) = grossTotal - bank.fee
-      const payableAmount = grossOwner + bank.net; // Same as: grossTotal - bank.fee
+      // Payable Amount = grossOwner (full) + bankFinal.net (after fees and extra fees) = grossTotal - bank.fee - bankExtraFeeWithVat
+      // ✅ إضافة Variations إلى payableAmount أيضاً
+      const payableAmount = (grossOwner + bankFinal.net) + totalVariationsAmount;
 
       // دوال العرض
       const A = (v) => formatMoney(round(n(v)));
@@ -119,10 +248,12 @@ export default function ContractFinancialSummary({ projectId }) {
           ownerPct,
           bankPct,
           totalPct,
-          total,
-          bank,
-          owner,
+          total: totalFinal,
+          bank: bankFinal,
+          owner: ownerFinal,
           payableAmount,
+          totalVariationsAmount,
+          actualContractorAmount,
           A,
           vat,
           inc,
@@ -131,7 +262,7 @@ export default function ContractFinancialSummary({ projectId }) {
     } catch (e) {
       return { error: e, data: null };
     }
-  }, [contract]);
+  }, [contract, variations]);
 
   if (loading) {
     return (
@@ -185,7 +316,7 @@ export default function ContractFinancialSummary({ projectId }) {
   }
 
   // تفكيك القيم المحسوبة
-  const { grossTotal, grossBank, grossOwner, ownerPct, bankPct, totalPct, total, bank, owner, payableAmount, A, vat, inc } = computed.data;
+  const { grossTotal, grossBank, grossOwner, ownerPct, bankPct, totalPct, total, bank, owner, payableAmount, totalVariationsAmount, actualContractorAmount, A, vat, inc } = computed.data;
   
   // ✅ تحديد نوع التمويل
   const isPrivateFunding = contract?.contract_classification === "private_funding";
@@ -385,20 +516,35 @@ export default function ContractFinancialSummary({ projectId }) {
             </thead>
             <tbody>
               {RowAmount(
-                t("contract_amount_excl_vat") || "المبلغ غير شامل الضريبة",
+                t("contract_total_actual_contractor") || "مبلغ المقاولة الفعلية (من العقد)",
                 total.net,
                 "actual_contract_vat",
                 null,
                 false
               )}
+              {totalVariationsAmount !== 0 && RowAmount(
+                t("variations_title") || "أوامر التغيير السعري",
+                totalVariationsAmount,
+                "actual_contract_vat",
+                null,
+                false
+              )}
+              {RowAmount(
+                t("contract_total_actual_contractor_with_variations") || "المبلغ الفعلي الإجمالي (العقد + التعديلات)",
+                actualContractorAmount,
+                "actual_contract_vat",
+                null,
+                false,
+                true
+              )}
               {RowAmount(
                 t("contract_vat_5"),
-                vat(total.net),
+                vat(actualContractorAmount),
                 "actual_contract_vat"
               )}
               {RowAmount(
                 t("contract_total_incl_vat"),
-                inc(total.net),
+                inc(actualContractorAmount),
                 "actual_contract_vat",
                 null,
                 true
@@ -470,7 +616,7 @@ export default function ContractFinancialSummary({ projectId }) {
             t("contract_consultant_percentage"),
             0,
             "fee_total",
-                totalPct || 0,
+                total.fee > 0 ? totalPct : 0, // ✅ عرض 0% إذا كانت الأتعاب صفر
                 false,
                 true
           )}
@@ -479,9 +625,33 @@ export default function ContractFinancialSummary({ projectId }) {
             total.fee,
             "fee_total"
           )}
+          {/* ✅ عرض الأتعاب الإضافية للإجمالي إذا كانت موجودة */}
+          {total.extraFeeWithVat > 0 && (
+            <>
+              {RowAmount(
+                t("contract_extra_fees") || "الأتعاب الإضافية",
+                total.extraFeeWithVat,
+                "total_extra_fee"
+              )}
+            </>
+          )}
           {RowAmount(
-            t("contract_total_actual_contractor"),
+            t("contract_total_actual_contractor") || "مبلغ المقاولة الفعلية (من العقد)",
             total.net,
+                "net_total",
+                null,
+                false
+          )}
+          {totalVariationsAmount !== 0 && RowAmount(
+            t("variations_title") || "أوامر التغيير السعري",
+            totalVariationsAmount,
+            "net_total",
+            null,
+            false
+          )}
+          {RowAmount(
+            t("contract_total_actual_contractor_with_variations") || "المبلغ الفعلي الإجمالي (العقد + التعديلات)",
+            actualContractorAmount,
                 "net_total",
                 null,
                 true
@@ -515,7 +685,7 @@ export default function ContractFinancialSummary({ projectId }) {
             t("contract_consultant_percentage"),
             0,
             "bank_fee",
-                bankPct || totalPct || 0,
+                 bank.fee > 0 ? bankPct : 0, // ✅ عرض 0% إذا كانت الأتعاب صفر
                 false,
                 true
           )}
@@ -524,6 +694,16 @@ export default function ContractFinancialSummary({ projectId }) {
             bank.fee,
             "bank_fee"
           )}
+           {/* ✅ عرض الأتعاب الإضافية للبنك إذا كانت موجودة */}
+           {bank.extraFeeWithVat > 0 && (
+             <>
+               {RowAmount(
+                 bank.extraDescription || t("contract_extra_fees") || "الأتعاب الإضافية",
+                 bank.extraFeeWithVat,
+                 "bank_extra_fee"
+               )}
+             </>
+           )}
           {RowAmount(
             t("contract_contractor_from_bank"),
             bank.net,
@@ -563,7 +743,7 @@ export default function ContractFinancialSummary({ projectId }) {
             t("contract_consultant_percentage"),
             0,
             "owner_fee",
-                ownerPct || totalPct || 0,
+                owner.fee > 0 ? ownerPct : 0, // ✅ عرض 0% إذا كانت الأتعاب صفر
                 false,
                 true
           )}
@@ -571,6 +751,16 @@ export default function ContractFinancialSummary({ projectId }) {
             t("contract_consultant_fees_owner"),
             owner.fee,
             "owner_fee"
+          )}
+          {/* ✅ عرض الأتعاب الإضافية للمالك إذا كانت موجودة */}
+          {owner.extraFeeWithVat > 0 && (
+            <>
+              {RowAmount(
+                owner.extraDescription || t("contract_extra_fees") || "الأتعاب الإضافية",
+                owner.extraFeeWithVat,
+                "owner_extra_fee"
+              )}
+            </>
           )}
           {RowAmount(
             t("contract_contractor_from_owner"),
@@ -606,9 +796,15 @@ export default function ContractFinancialSummary({ projectId }) {
           {!isPrivateFunding && RowVAT(t("contract_consultant_fees_bank"), bank.fee)}
           {RowVAT(t("contract_consultant_fees_owner"), owner.fee)}
           {RowVAT(t("contract_total_consultant_fees"), total.fee, true)}
+          {/* ✅ عرض الأتعاب الإضافية في الجدول الكبير - نمرر المبلغ الأصلي (غير شامل الضريبة) لأن RowVAT تضيف الضريبة تلقائياً */}
+          {!isPrivateFunding && bank.extraFee > 0 && RowVAT(bank.extraDescription || t("contract_extra_fees") || "الأتعاب الإضافية (البنك)", bank.extraFee)}
+          {owner.extraFee > 0 && RowVAT(owner.extraDescription || t("contract_extra_fees") || "الأتعاب الإضافية (المالك)", owner.extraFee)}
+          {total.extraFee > 0 && RowVAT(t("contract_total_extra_fees") || "إجمالي الأتعاب الإضافية", total.extraFee, true)}
           {!isPrivateFunding && RowVAT(t("contract_contractor_from_bank"), bank.net)}
           {RowVAT(t("contract_contractor_from_owner"), owner.net)}
-          {RowVAT(t("contract_total_actual_contractor"), total.net, true)}
+          {RowVAT(t("contract_total_actual_contractor") || "مبلغ المقاولة الفعلية (من العقد)", total.net, false)}
+          {totalVariationsAmount !== 0 && RowVAT(t("variations_title") || "أوامر التغيير السعري", totalVariationsAmount, false)}
+          {RowVAT(t("contract_total_actual_contractor_with_variations") || "المبلغ الفعلي الإجمالي (العقد + التعديلات)", actualContractorAmount, true)}
         </tbody>
       </table>
       </div>

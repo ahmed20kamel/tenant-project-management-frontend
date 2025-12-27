@@ -83,9 +83,9 @@ export default function ConsultantsPage() {
           projects_count: allProjects.length,
           __key: `consultant_${consultant.id}`,
         };
-      }).sort((a, b) =>
-        a.name.localeCompare(b.name, isAR ? "ar" : "en")
-      );
+      }).sort((a, b) => {
+        return a.name.localeCompare(b.name, isAR ? "ar" : "en");
+      });
 
       setConsultants(consultantsWithKey);
     } catch (e) {

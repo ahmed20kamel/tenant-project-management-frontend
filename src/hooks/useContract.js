@@ -30,10 +30,6 @@ const INITIAL_FORM = {
   bank_fee_supervision_percent: "",
   bank_fee_extra_mode: "percent",
   bank_fee_extra_value: "",
-  has_start_order: "no",
-  start_order_file: null,
-  start_order_date: "",
-  start_order_notes: "",
   project_end_date: "",
   contract_file: null,
   contract_file_url: null,
@@ -57,6 +53,20 @@ const INITIAL_FORM = {
   price_offer_file: null,
   price_offer_file_url: null,
   price_offer_file_name: null,
+  // ✅ المخططات التعاقدية (مقسمة إلى 4 أنواع)
+  mep_drawings_file: null,
+  mep_drawings_file_url: null,
+  mep_drawings_file_name: null,
+  architectural_drawings_file: null,
+  architectural_drawings_file_url: null,
+  architectural_drawings_file_name: null,
+  structural_drawings_file: null,
+  structural_drawings_file_url: null,
+  structural_drawings_file_name: null,
+  decoration_drawings_file: null,
+  decoration_drawings_file_url: null,
+  decoration_drawings_file_name: null,
+  // ⚠️ الحقل القديم - للتوافق فقط
   contractual_drawings_file: null,
   contractual_drawings_file_url: null,
   contractual_drawings_file_name: null,
@@ -124,11 +134,6 @@ export default function useContract(projectId) {
             contract_date: toInputDate(s.contract_date) || prev.contract_date || "",
             owner_includes_consultant: toYesNo(s.owner_includes_consultant),
             bank_includes_consultant: toYesNo(s.bank_includes_consultant),
-            // ✅ تحويل start_order_exists (boolean) إلى has_start_order (yes/no)
-            has_start_order: toYesNo(s.start_order_exists),
-            start_order_notes: s.start_order_notes || "",
-            // الحفاظ على start_order_file كـ null (سيتم تحميله في ContractStep)
-            start_order_file: null,
             // ✅ تحميل التمديدات مع الحقول الجديدة
             extensions: Array.isArray(s.extensions) 
               ? s.extensions.map(ext => ({

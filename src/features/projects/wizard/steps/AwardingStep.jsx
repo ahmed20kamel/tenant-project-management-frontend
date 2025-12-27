@@ -287,9 +287,9 @@ export default function AwardingStep({ projectId, onPrev, onNext, isView }) {
         window.dispatchEvent(new CustomEvent("awarding-updated", { detail: { projectId } }));
       }
       
-      // ✅ أمر الترسية هو الخطوة الأخيرة - دائماً ننتقل إلى قائمة المشاريع بعد الحفظ
+      // ✅ بعد الحفظ، ننتقل إلى صفحة عرض المشروع
       setLocalIsView(true);
-      navigate("/projects");
+      navigate(`/projects/${projectId}`);
     } catch (err) {
       const serverData = err?.response?.data;
       const fallback = err?.message || (serverData ? JSON.stringify(serverData, null, 2) : "فشل الحفظ");

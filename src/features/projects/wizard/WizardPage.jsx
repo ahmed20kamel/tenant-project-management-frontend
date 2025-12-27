@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { FaCheck } from "react-icons/fa";
 import { api } from "../../../services/api";
 import Button from "../../../components/common/Button";
+import { useAuth } from "../../../contexts/AuthContext";
 
 import useWizardState from "./hooks/useWizardState";
 import useProjectData from "../../../hooks/useProjectData";
@@ -13,10 +14,9 @@ import LicenseStep from "./steps/LicenseStep";
 import ContractStep from "./steps/ContractStep";
 import SetupSummary from "./components/SetupSummary.jsx";
 import InfoTip from "./components/InfoTip";
-import AwardingStep from "./steps/AwardingStep";
 
 const EMPTY_SETUP = { projectType: "", villaCategory: "", contractType: "" };
-const STEP_INDEX = { setup: 0, siteplan: 1, license: 2, contract: 3, award: 4 };
+const STEP_INDEX = { setup: 0, siteplan: 1, license: 2, contract: 3 };
 
 export default function WizardPage() {
   const { t, i18n } = useTranslation();
@@ -36,6 +36,10 @@ export default function WizardPage() {
   const stepParam = (params.get("step") || "setup").toLowerCase();
 
   const { setup, setSetup } = useWizardState();
+  const { user } = useAuth();
+  
+  // ✅ تحديد نوع المستخدم
+  const isSuperAdmin = user?.is_superuser || user?.role?.name === 'company_super_admin';
 
   const [project, setProject] = useState(null);
   const [contract, setContract] = useState(null);
@@ -43,6 +47,9 @@ export default function WizardPage() {
   
   // ✅ حالة إنشاء المشروع
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  
+  // ✅ خيار الاعتماد المباشر للسوبر يوزر
+  const [autoFinalApprove, setAutoFinalApprove] = useState(false);
   
   // ✅ إعادة تعيين index إلى 0 عند فتح مشروع جديد
   useEffect(() => {
@@ -168,16 +175,10 @@ export default function WizardPage() {
     siteplan: t("wizard_step_siteplan"),
     license: t("wizard_step_license"),
     contract: t("wizard_step_contract"),
-    award: t("wizard_step_award"),
     projectPrefix: t("wizard_project_prefix"),
     home: t("wizard_home"),
     infoNote: t("wizard_info_note"),
   };
-
-  // ✅ تحديد ما إذا كان التمويل خاص (يحتاج AwardingStep) - من setup بدلاً من contract
-  const contractClassification = setup?.contractClassification || contract?.contract_classification;
-  const isPrivateFunding = contractClassification === "private_funding";
-  const isHousingLoan = contractClassification === "housing_loan_program";
 
   const STEPS = useMemo(() => {
     const base = [{ id: "setup", title: labels.setup, Component: ProjectSetupStep }];
@@ -190,23 +191,23 @@ export default function WizardPage() {
       { id: "contract", title: labels.contract, Component: ContractStep },
     ];
     
-    // ✅ إضافة AwardingStep فقط للقرض السكني (housing_loan_program)
-    // إذا كان contract_classification === "housing_loan_program"، نضيف AwardingStep
-    // إذا كان contract_classification === "private_funding" أو غير محدد، لا نضيف AwardingStep
-    if (isHousingLoan) {
-      steps.push({ id: "award", title: labels.award, Component: AwardingStep });
-    }
+    // ✅ تم إزالة AwardingStep من الويزارد - الترسية متاحة فقط من صفحة المشروع
     
     return steps;
-  }, [allowSitePlanFlow, isHousingLoan, labels.setup, labels.siteplan, labels.license, labels.contract, labels.award]);
+  }, [allowSitePlanFlow, labels.setup, labels.siteplan, labels.license, labels.contract]);
 
   useEffect(() => {
+    // ✅ إذا كان step=awarding، نتوجه إلى صفحة الترسية المنفصلة
+    if (stepParam === "awarding" && projectId) {
+      navigate(`/projects/${projectId}/awarding/view`);
+      return;
+    }
     const wanted = STEP_INDEX[stepParam] ?? 0;
     const maxIndex = allowSitePlanFlow ? (STEPS.length - 1) : 0;
     setIndex(Math.min(wanted, maxIndex));
-  }, [stepParam, allowSitePlanFlow, STEPS.length]);
+  }, [stepParam, allowSitePlanFlow, STEPS.length, projectId, navigate]);
 
-  // التأكد من أن index صالح بعد تحديث STEPS (مثلاً إذا تم إزالة AwardingStep)
+  // التأكد من أن index صالح بعد تحديث STEPS
   useEffect(() => {
     if (index >= STEPS.length) {
       setIndex(Math.max(0, STEPS.length - 1));
@@ -228,7 +229,7 @@ export default function WizardPage() {
   };
 
   // ✅ دالة إنشاء المشروع بعد إتمام المرحلتين الأولى والثانية
-  const createProjectAndSaveData = async (setupData, sitePlanData) => {
+  const createProjectAndSaveData = async (setupData, sitePlanData, shouldAutoFinalApprove = false) => {
     try {
       setIsCreatingProject(true);
       
@@ -283,7 +284,18 @@ export default function WizardPage() {
         console.warn("⚠️ contractClassification is empty in setupData, skipping save during project creation");
       }
       
-      // 4. الانتقال إلى صفحة الويزارد بالمشروع الجديد
+      // 4. ✅ إذا كان السوبر يوزر اختار الاعتماد المباشر، نرسل طلب final_approve
+      if (isSuperAdmin && shouldAutoFinalApprove) {
+        try {
+          await api.post(`projects/${newProjectId}/final_approve/`, { notes: "تم الاعتماد المباشر عند إنشاء المشروع" });
+          console.log("✅ Project auto-final-approved during creation");
+        } catch (e) {
+          console.error("❌ Error auto-final-approving project during creation:", e);
+          // لا نوقف العملية إذا فشل الاعتماد المباشر
+        }
+      }
+      
+      // 5. الانتقال إلى صفحة الويزارد بالمشروع الجديد
       navigate(`/projects/${newProjectId}/wizard?step=license`);
       
     } catch (err) {
@@ -337,10 +349,10 @@ export default function WizardPage() {
       <div className="container">
         <div className="card" style={{ textAlign: "center", padding: "var(--space-8)" }}>
           <div style={{ fontSize: "var(--fs-24)", marginBottom: "var(--space-4)" }}>
-            {isAR ? "جاري إنشاء المشروع..." : "Creating project..."}
+            {t("creating_project")}
           </div>
           <div style={{ color: "var(--muted)" }}>
-            {isAR ? "يرجى الانتظار..." : "Please wait..."}
+            {t("please_wait")}
           </div>
         </div>
       </div>
@@ -353,7 +365,7 @@ export default function WizardPage() {
         <div className="row row--space-between row--align-center">
           <div className="mini">
             {isNewProject 
-              ? (isAR ? "مشروع جديد" : "New Project")
+              ? t("new_project")
               : (project?.name ? `${labels.projectPrefix}: ${project.name}` : null)}
           </div>
           {!isNewProject && projectId && (
@@ -415,6 +427,9 @@ export default function WizardPage() {
           }}
           isView={isView}
           isNewProject={isNewProject}
+          isSuperAdmin={isSuperAdmin}
+          autoFinalApprove={autoFinalApprove}
+          setAutoFinalApprove={setAutoFinalApprove}
         />
       )}
 
@@ -427,7 +442,7 @@ export default function WizardPage() {
           isView={isView}
           isNewProject={isNewProject}
           onCreateProject={(sitePlanData) => {
-            createProjectAndSaveData(setup, sitePlanData);
+            createProjectAndSaveData(setup, sitePlanData, autoFinalApprove);
           }}
         />
       )}
@@ -438,14 +453,11 @@ export default function WizardPage() {
         <Current 
           projectId={projectId} 
           onPrev={goPrev} 
-          // ✅ نمرر onNext إذا كانت هناك خطوة تالية (AwardingStep موجودة)
-          // ContractStep سيتحقق داخلياً من نوع العقد (housing_loan_program) ليقرر ما إذا كان يجب الانتقال للخطوة التالية
-          onNext={STEPS.some(s => s.id === "award") ? goNext : undefined}
+          // ✅ ContractStep لا يحتاج onNext لأنه آخر خطوة في الويزارد
+          // الترسية متاحة من صفحة المشروع مباشرة
+          onNext={undefined}
           isView={isView} 
         />
-      )}
-      {allowSitePlanFlow && index === 4 && (
-        <Current projectId={projectId} onPrev={goPrev} isView={isView} />
       )}
     </div>
   );

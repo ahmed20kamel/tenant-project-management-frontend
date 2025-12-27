@@ -45,12 +45,20 @@ const CompanyUsersPage = lazy(() => import("./features/company/pages/CompanyUser
 const ProjectsPage = lazy(() => import("./features/projects/pages/ProjectsPage"));
 const ProjectView = lazy(() => import("./features/projects/pages/ProjectView"));
 const WizardPage = lazy(() => import("./features/projects/wizard/WizardPage"));
+const PendingApprovalsPage = lazy(() => import("./features/projects/pages/PendingApprovalsPage"));
+const FinalApprovalsPage = lazy(() => import("./features/projects/pages/FinalApprovalsPage"));
 const ViewSetup = lazy(() => import("./features/projects/view/ViewSetup"));
 const ViewSitePlan = lazy(() => import("./features/projects/view/ViewSitePlan"));
 const ViewLicense = lazy(() => import("./features/projects/view/ViewLicense"));
 const ViewContract = lazy(() => import("./features/projects/view/ViewContract"));
 const ViewAwarding = lazy(() => import("./features/projects/view/ViewAwarding"));
 const ViewSummary = lazy(() => import("./features/projects/view/ViewSummary"));
+const SelectProjectForStartOrder = lazy(() => import("./features/projects/pages/SelectProjectForStartOrder"));
+const SelectProjectForVariation = lazy(() => import("./features/projects/pages/SelectProjectForVariation"));
+const SelectProjectForAwarding = lazy(() => import("./features/projects/pages/SelectProjectForAwarding"));
+const SelectProjectForExtensions = lazy(() => import("./features/projects/pages/SelectProjectForExtensions"));
+const SelectProjectForPayment = lazy(() => import("./features/projects/pages/SelectProjectForPayment"));
+const SelectProjectForInvoice = lazy(() => import("./features/projects/pages/SelectProjectForInvoice"));
 
 // ====== Payments Pages (صفحات المدفوعات) - Lazy Loading ======
 const PaymentsPage = lazy(() => import("./features/payments/pages/PaymentsPage"));
@@ -119,6 +127,14 @@ export default function App() {
 
         {/* قائمة المشاريع */}
             <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
+            <Route path="/projects/pending-approvals" element={<ProtectedRoute><PendingApprovalsPage /></ProtectedRoute>} />
+            <Route path="/projects/final-approvals" element={<ProtectedRoute><FinalApprovalsPage /></ProtectedRoute>} />
+            <Route path="/projects/select-start-order" element={<ProtectedRoute><SelectProjectForStartOrder /></ProtectedRoute>} />
+            <Route path="/projects/select-variation" element={<ProtectedRoute><SelectProjectForVariation /></ProtectedRoute>} />
+            <Route path="/projects/select-awarding" element={<ProtectedRoute><SelectProjectForAwarding /></ProtectedRoute>} />
+            <Route path="/projects/select-extensions" element={<ProtectedRoute><SelectProjectForExtensions /></ProtectedRoute>} />
+            <Route path="/projects/select-payment" element={<ProtectedRoute><SelectProjectForPayment /></ProtectedRoute>} />
+            <Route path="/projects/select-invoice" element={<ProtectedRoute><SelectProjectForInvoice /></ProtectedRoute>} />
 
         {/* قائمة الدفعات */}
             <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
