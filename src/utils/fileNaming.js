@@ -36,38 +36,43 @@ export function getStandardFileName(fileType, index = 0, originalExtension = '',
   // إذا وُجد نص الحقل، نستخدمه مباشرة
   if (labelText) {
     const fileName = labelToFileName(labelText);
-    return index > 0 ? `${fileName}_${index + 1}${extension}` : `${fileName}${extension}`;
+    // استخراج النص الإنجليزي من labelText إذا كان موجوداً
+    const englishMatch = labelText.match(/[A-Z][a-zA-Z\s]+/);
+    const englishPart = englishMatch ? englishMatch[0].trim().replace(/\s+/g, '_') : '';
+    const baseName = englishPart ? `${fileName}_${englishPart}` : fileName;
+    return index > 0 ? `${baseName}_${index + 1}${extension}` : `${baseName}${extension}`;
   }
   
-  // أسماء الملفات الموحدة حسب النوع
+  // أسماء الملفات الموحدة حسب النوع (مع النص الإنجليزي)
   const fileNames = {
     // مخطط الأرض
-    'application_file': 'مخطط_الأرض',
-    'siteplan_application': 'مخطط_الأرض',
+    'application_file': { ar: 'مخطط_الأرض', en: 'Site_Plan' },
+    'siteplan_application': { ar: 'مخطط_الأرض', en: 'Site_Plan' },
     
     // بطاقة الهوية
-    'id_attachment': `بطاقة_الهوية_${index + 1}`,
-    'owner_id': `بطاقة_الهوية_${index + 1}`,
+    'id_attachment': { ar: 'بطاقة_الهوية', en: 'ID_Card' },
+    'owner_id': { ar: 'بطاقة_الهوية', en: 'ID_Card' },
     
     // رخصة البناء
-    'building_license_file': 'رخصة_البناء',
-    'license_file': 'رخصة_البناء',
+    'building_license_file': { ar: 'رخصة_البناء', en: 'Building_Permit' },
+    'license_file': { ar: 'رخصة_البناء', en: 'Building_Permit' },
     
     // مرفقات الدفعات
-    'deposit_slip': 'إيصال_إيداع',
-    'invoice_file': 'فاتورة_الدفع',
-    'receipt_voucher': 'سند_قبض',
-    'bank_payment_attachments': 'مرفقات_دفعة_البنك',
+    'deposit_slip': { ar: 'إيصال_إيداع', en: 'Deposit_Slip' },
+    'invoice_file': { ar: 'فاتورة_الدفع', en: 'Payment_Invoice' },
+    'receipt_voucher': { ar: 'سند_قبض', en: 'Receipt_Voucher' },
+    'bank_payment_attachments': { ar: 'مرفقات_دفعة_البنك', en: 'Bank_Payment_Attachments' },
     
     // مرفقات العقد
-    'contract_attachment': 'مرفق_العقد',
+    'contract_attachment': { ar: 'مرفق_العقد', en: 'Contract_Attachment' },
     
     // مرفقات أخرى
-    'attachment': 'مرفق',
+    'attachment': { ar: 'مرفق', en: 'Attachment' },
   };
   
-  const baseName = fileNames[fileType] || 'ملف';
-  return `${baseName}${extension}`;
+  const fileInfo = fileNames[fileType] || { ar: 'ملف', en: 'File' };
+  const baseName = `${fileInfo.ar}_${fileInfo.en}`;
+  return index > 0 ? `${baseName}_${index + 1}${extension}` : `${baseName}${extension}`;
 }
 
 /**

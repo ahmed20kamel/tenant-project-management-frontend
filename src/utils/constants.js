@@ -14,6 +14,7 @@ export const ZONES = {
     { value: "Mohammed Bin Zayed City", label: { en: "Mohammed Bin Zayed City", ar: "مدينة محمد بن زايد" } },
     { value: "Madinat Zayed", label: { en: "Madinat Zayed", ar: "مدينة زايد" } },
     { value: "Al Shamkha", label: { en: "Al Shamkha", ar: "الشامخة" } },
+    { value: "Al Shawamekh", label: { en: "Al Shawamekh", ar: "الشوامخ" } },
     { value: "Yas Island", label: { en: "Yas Island", ar: "جزيرة ياس" } },
     { value: "Saadiyat Island", label: { en: "Saadiyat Island", ar: "جزيرة السعديات" } },
     { value: "Al Reem Island", label: { en: "Al Reem Island", ar: "جزيرة الريم" } },
