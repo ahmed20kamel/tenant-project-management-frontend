@@ -18,8 +18,6 @@ import {
   FaPlus, 
   FaList, 
   FaReceipt,
-  FaBars,
-  FaTimes,
   FaChevronDown,
   FaChevronRight
 } from "react-icons/fa";
@@ -46,6 +44,8 @@ export default function CompanySidebar() {
     if (pathname === "/projects/select-variation") return "add-variation";
     if (pathname === "/projects/select-awarding") return "add-awarding";
     if (pathname === "/projects/select-extensions") return "add-extensions";
+    if (pathname === "/projects/select-project-schedule") return "add-project-schedule";
+    if (pathname === "/projects/select-excavation-notice") return "add-excavation-notice";
     if (pathname === "/projects/select-payment") return "add-payment";
     if (pathname === "/projects/select-invoice") return "add-invoice";
     if (pathname === "/projects/pending-approvals") return "pending-approvals";
@@ -53,7 +53,6 @@ export default function CompanySidebar() {
     
     // General project routes
     if (pathname.startsWith("/projects") || pathname.startsWith("/wizard")) {
-      // Return parent key to keep projects menu open
       return pathname.includes("/projects") && !pathname.includes("/select-") ? "projects-list" : "projects";
     }
     
@@ -121,6 +120,18 @@ export default function CompanySidebar() {
         key: 'add-extensions',
         icon: <FaClock />,
         label: t("add_extensions") || "إضافة التمديدات",
+        type: 'operation',
+      },
+      {
+        key: 'add-project-schedule',
+        icon: <FaClock />,
+        label: t("add_project_schedule") || "إضافة الجدول الزمني",
+        type: 'operation',
+      },
+      {
+        key: 'add-excavation-notice',
+        icon: <FaFileInvoice />,
+        label: t("add_excavation_notice") || "إضافة إشعار بدء الحفر",
         type: 'operation',
       },
       // Divider
@@ -241,6 +252,12 @@ export default function CompanySidebar() {
         break;
       case 'add-extensions':
         navigate('/projects/select-extensions');
+        break;
+      case 'add-project-schedule':
+        navigate('/projects/select-project-schedule');
+        break;
+      case 'add-excavation-notice':
+        navigate('/projects/select-excavation-notice');
         break;
       case 'add-payment':
         navigate('/projects/select-payment');
@@ -385,18 +402,6 @@ export default function CompanySidebar() {
 
   return (
     <aside className="sidebar-antd" dir={isRTL ? "rtl" : "ltr"}>
-      <div className="sidebar-header">
-      <div className="sidebar-collapse-btn">
-        <button 
-          onClick={() => setCollapsed(!collapsed)}
-          className="sidebar-toggle-btn"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            type="button"
-        >
-          {collapsed ? <FaBars /> : <FaTimes />}
-        </button>
-      </div>
-      </div>
       <div className="simple-menu sidebar-menu">
         {buildMenuItems().map((item) => renderMenuItem(item))}
       </div>

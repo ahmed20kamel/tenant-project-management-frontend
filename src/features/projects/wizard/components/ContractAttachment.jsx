@@ -15,6 +15,7 @@ const ATTACHMENT_TYPES = [
   { value: "appendix", label: "ملحق عقد" },
   { value: "explanation", label: "توضيح تعاقدي" },
   { value: "bank_contract", label: "عقد بنك" },
+  { value: "price_offer", label: "عرض سعر" },
 ];
 
 export default function ContractAttachment({
@@ -120,7 +121,9 @@ export default function ContractAttachment({
                 );
               } else {
                 return (
-                  <div className="card text-center prj-muted p-20">لا يوجد ملف</div>
+                  <div className="card text-center prj-muted p-20" style={{ fontSize: "14px", color: "var(--muted)" }}>
+                    لم يتم رفع ملف بعد
+                  </div>
                 );
               }
             })()}

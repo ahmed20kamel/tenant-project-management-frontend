@@ -14,8 +14,10 @@ import { formatMoney, formatDate } from "../../../utils/formatters";
 import { getProjectTypeLabel, getVillaCategoryLabel, getContractTypeLabel } from "../../../utils/projectLabels";
 import { formatInternalCode } from "../../../utils/internalCodeFormatter";
 import { getProjectStatusLabel, getProjectStatusColor } from "../../../utils/projectStatus";
-import { handleFileClick } from "../../../utils/fileHelpers";
+import { handleFileClick, extractFileNameFromUrl } from "../../../utils/fileHelpers";
 import ContractExtension from "../wizard/components/ContractExtension";
+import StaticContractAttachmentFile from "../wizard/components/StaticContractAttachmentFile";
+import FileAttachmentView from "../../../components/file-upload/FileAttachmentView";
 
 export default function ProjectView() {
   const { projectId } = useParams();
@@ -23,7 +25,7 @@ export default function ProjectView() {
   const { t, i18n } = useTranslation();
   const nav = useNavigate();
   const { user } = useAuth();
-  const { project, siteplan, license, contract, awarding, startOrder, payments, variations, invoices, loading, reload } = useProjectData(projectId);
+  const { project, siteplan, license, contract, awarding, startOrder, projectSchedule, excavationNotice, payments, variations, invoices, loading, reload } = useProjectData(projectId);
   const { permissions: projectPermissions, loading: permissionsLoading } = useProjectPermissions(projectId);
   
   // تحديد نوع المستخدم
@@ -71,6 +73,25 @@ export default function ProjectView() {
     start_order_date: "",
     start_order_notes: "",
     start_order_file: null,
+    start_order_file_url: null,
+    start_order_file_name: null,
+  });
+  const [projectScheduleDialogOpen, setProjectScheduleDialogOpen] = useState(false);
+  const [savingProjectSchedule, setSavingProjectSchedule] = useState(false);
+  const [projectScheduleFormData, setProjectScheduleFormData] = useState({
+    project_start_date: "",
+    project_end_date: "",
+    schedule_file: null,
+    schedule_file_url: null,
+    schedule_file_name: null,
+  });
+  const [excavationNoticeDialogOpen, setExcavationNoticeDialogOpen] = useState(false);
+  const [savingExcavationNotice, setSavingExcavationNotice] = useState(false);
+  const [excavationNoticeFormData, setExcavationNoticeFormData] = useState({
+    notice_date: "",
+    notice_file: null,
+    notice_file_url: null,
+    notice_file_name: null,
   });
   const [extensionsFormData, setExtensionsFormData] = useState([]);
   const [savingExtensions, setSavingExtensions] = useState(false);
@@ -136,6 +157,8 @@ export default function ProjectView() {
   const hasContract = !!contract;
   const hasAwarding = !!awarding;
   const hasStartOrder = !!startOrder;
+  const hasProjectSchedule = !!projectSchedule;
+  const hasExcavationNotice = !!excavationNotice;
   const isHousingLoan = contract?.contract_classification === "housing_loan_program";
   const contractClassificationLabel =
     contract?.contract_classification === "housing_loan_program"
@@ -526,6 +549,18 @@ export default function ProjectView() {
                 {t("extensions") || "التمديدات"}
               </button>
             )}
+            <button
+              className={`prj-tab ${activeTab === "project_schedule" ? "active" : ""}`}
+              onClick={() => setActiveTab("project_schedule")}
+            >
+              {t("project_schedule") || "الجدول الزمني"}
+            </button>
+            <button
+              className={`prj-tab ${activeTab === "excavation_notice" ? "active" : ""}`}
+              onClick={() => setActiveTab("excavation_notice")}
+            >
+              {t("excavation_start_notice") || "إشعار بدء الحفر"}
+            </button>
             {isHousingLoan && (
               <button
                 className={`prj-tab ${activeTab === "awarding" ? "active" : ""}`}
@@ -728,10 +763,15 @@ export default function ProjectView() {
                     {formatMoney(contract?.total_project_value)}
                   </div>
                 </div>
-                {contract?.project_end_date && (
+                {/* ✅ عرض تاريخ نهاية المشروع من StartOrder (المحسوب تلقائياً) بدلاً من Contract */}
+                {(startOrder?.project_end_date || contract?.project_end_date) && (
                   <div className="prj-info-item">
                     <div className="prj-info-label">{t("project_end_date_calculated")}</div>
-                    <div className="prj-info-value">{contract?.project_end_date}</div>
+                    <div className="prj-info-value">
+                      {startOrder?.project_end_date 
+                        ? formatDate(startOrder.project_end_date)
+                        : formatDate(contract.project_end_date)}
+                    </div>
                   </div>
                 )}
                   </div>
@@ -756,12 +796,16 @@ export default function ProjectView() {
                             start_order_date: startOrder.start_order_date || "",
                             start_order_notes: startOrder.start_order_notes || "",
                             start_order_file: null,
+                            start_order_file_url: startOrder.start_order_file || null,
+                            start_order_file_name: startOrder.start_order_file_name || (startOrder.start_order_file ? extractFileNameFromUrl(startOrder.start_order_file) : null),
                           });
                         } else {
                           setStartOrderFormData({
                             start_order_date: "",
                             start_order_notes: "",
                             start_order_file: null,
+                            start_order_file_url: null,
+                            start_order_file_name: null,
                           });
                         }
                         setStartOrderDialogOpen(true);
@@ -781,19 +825,18 @@ export default function ProjectView() {
                         </div>
                       )}
                         {startOrder?.start_order_file && (
-                        <div className="prj-info-item">
+                        <div className="prj-info-item prj-info-item--wide">
                           <div className="prj-info-label">{t("start_order_file") || "ملف أمر المباشرة"}</div>
-                    <div className="prj-info-value">
-                      <a 
-                        href="#" 
-                              onClick={handleFileClick(startOrder.start_order_file)}
-                        style={{ color: "var(--primary)", textDecoration: "underline", cursor: "pointer" }}
-                      >
-                              {t("view_file") || "عرض الملف"}
-                      </a>
-                    </div>
-                  </div>
-                )}
+                          <div className="prj-info-value">
+                            <FileAttachmentView
+                              fileUrl={startOrder.start_order_file}
+                              fileName={startOrder.start_order_file_name || extractFileNameFromUrl(startOrder.start_order_file)}
+                              projectId={projectId}
+                              endpoint={`projects/${projectId}/start-order/`}
+                            />
+                          </div>
+                        </div>
+                      )}
                       {startOrder?.start_order_notes && (
                         <div className="prj-info-item prj-info-item--wide">
                           <div className="prj-info-label">{t("start_order_notes") || "ملاحظات أمر المباشرة"}</div>
@@ -837,6 +880,7 @@ export default function ProjectView() {
                               file: null,
                               file_url: ext.file_url || null,
                               file_name: ext.file_name || null,
+                              _isExisting: true, // ✅ علامة للتمييز بين التمديدات الموجودة والجديدة
                             })) : [];
                             const newExtension = {
                               reason: "",
@@ -848,9 +892,9 @@ export default function ProjectView() {
                               file_url: null,
                               file_name: null,
                             };
-                            // ✅ إضافة التمديد الجديد فقط (بدون التمديدات الموجودة)
-                            setExtensionsFormData([newExtension]);
-                            // ✅ فتح وضعية التعديل لعرض التمديد الجديد فقط
+                            // ✅ إضافة التمديد الجديد إلى التمديدات الموجودة
+                            setExtensionsFormData([...currentExtensions, newExtension]);
+                            // ✅ فتح وضعية التعديل لعرض جميع التمديدات (الموجودة + الجديد)
                             setEditingExtensions(true);
                           }}
                         >
@@ -990,6 +1034,138 @@ export default function ProjectView() {
                       {t("no_extensions") || "لا توجد تمديدات. اضغط على «إضافة تمديد» لإضافة تمديد جديد."}
                     </div>
                   )
+                )}
+              </div>
+            )}
+
+            {/* Project Schedule Tab */}
+            {activeTab === "project_schedule" && (
+              <div className="prj-tab-panel">
+                <div className="prj-tab-header">
+                  <h2>{t("project_schedule") || "الجدول الزمني"}</h2>
+                  <div className="prj-tab-actions">
+                    <Button
+                      onClick={() => {
+                        if (projectSchedule) {
+                          setProjectScheduleFormData({
+                            project_start_date: projectSchedule.project_start_date || "",
+                            project_end_date: projectSchedule.project_end_date || "",
+                            schedule_file: null,
+                            schedule_file_url: projectSchedule.schedule_file || null,
+                            schedule_file_name: projectSchedule.schedule_file_name || (projectSchedule.schedule_file ? extractFileNameFromUrl(projectSchedule.schedule_file) : null),
+                          });
+                        } else {
+                          setProjectScheduleFormData({
+                            project_start_date: "",
+                            project_end_date: "",
+                            schedule_file: null,
+                            schedule_file_url: null,
+                            schedule_file_name: null,
+                          });
+                        }
+                        setProjectScheduleDialogOpen(true);
+                      }}
+                    >
+                      {projectSchedule ? t("edit") : (t("add") || "إضافة")}
+                    </Button>
+                  </div>
+                </div>
+                {projectSchedule ? (
+                  <>
+                    <div className="prj-info-grid">
+                      {projectSchedule?.project_start_date && (
+                        <div className="prj-info-item">
+                          <div className="prj-info-label">{t("project_start_date") || "تاريخ بداية المشروع"}</div>
+                          <div className="prj-info-value">{formatDate(projectSchedule.project_start_date)}</div>
+                        </div>
+                      )}
+                      {projectSchedule?.project_end_date && (
+                        <div className="prj-info-item">
+                          <div className="prj-info-label">{t("project_end_date") || "تاريخ نهاية المشروع (محسوب تلقائياً)"}</div>
+                          <div className="prj-info-value">{formatDate(projectSchedule.project_end_date)}</div>
+                        </div>
+                      )}
+                    </div>
+                    {projectSchedule?.schedule_file && (
+                      <div className="prj-info-item prj-info-item--wide">
+                        <div className="prj-info-label">{t("schedule_file") || "ملف الجدول الزمني"}</div>
+                        <div className="prj-info-value">
+                          <FileAttachmentView
+                            fileUrl={projectSchedule.schedule_file}
+                            fileName={projectSchedule.schedule_file_name || extractFileNameFromUrl(projectSchedule.schedule_file)}
+                            projectId={projectId}
+                            endpoint={`projects/${projectId}/project-schedule/`}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="prj-empty-state">
+                    {t("project_schedule_not_added") || "لم يتم إضافة الجدول الزمني بعد. اضغط على «إضافة» لإضافة البيانات."}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Excavation Start Notice Tab */}
+            {activeTab === "excavation_notice" && (
+              <div className="prj-tab-panel">
+                <div className="prj-tab-header">
+                  <h2>{t("excavation_start_notice") || "إشعار بدء الحفر"}</h2>
+                  <div className="prj-tab-actions">
+                    <Button
+                      onClick={() => {
+                        if (excavationNotice) {
+                          setExcavationNoticeFormData({
+                            notice_date: excavationNotice.notice_date || "",
+                            notice_file: null,
+                            notice_file_url: excavationNotice.notice_file || null,
+                            notice_file_name: excavationNotice.notice_file_name || (excavationNotice.notice_file ? extractFileNameFromUrl(excavationNotice.notice_file) : null),
+                          });
+                        } else {
+                          setExcavationNoticeFormData({
+                            notice_date: "",
+                            notice_file: null,
+                            notice_file_url: null,
+                            notice_file_name: null,
+                          });
+                        }
+                        setExcavationNoticeDialogOpen(true);
+                      }}
+                    >
+                      {excavationNotice ? t("edit") : (t("add") || "إضافة")}
+                    </Button>
+                  </div>
+                </div>
+                {excavationNotice ? (
+                  <>
+                    <div className="prj-info-grid">
+                      {excavationNotice?.notice_date && (
+                        <div className="prj-info-item">
+                          <div className="prj-info-label">{t("notice_date") || "تاريخ إشعار بدء الحفر"}</div>
+                          <div className="prj-info-value">{formatDate(excavationNotice.notice_date)}</div>
+                        </div>
+                      )}
+                      {excavationNotice?.notice_file && (
+                        <div className="prj-info-item prj-info-item--wide">
+                          <div className="prj-info-label">{t("notice_file") || "ملف إشعار بدء الحفر"}</div>
+                          <div className="prj-info-value">
+                            <FileAttachmentView
+                              fileUrl={excavationNotice.notice_file}
+                              fileName={excavationNotice.notice_file_name || extractFileNameFromUrl(excavationNotice.notice_file)}
+                              projectId={projectId}
+                              endpoint={`projects/${projectId}/excavation-notice/`}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="prj-empty-state">
+                    {t("excavation_notice_not_added") || "لم يتم إضافة إشعار بدء الحفر بعد. اضغط على «إضافة» لإضافة البيانات."}
+                  </div>
                 )}
               </div>
             )}
@@ -1685,32 +1861,26 @@ export default function ProjectView() {
                 onChange={(value) => setStartOrderFormData({ ...startOrderFormData, start_order_date: value })}
               />
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
-                {t("start_order_file") || "ملف أمر المباشرة"}
-              </label>
-              <input
-                type="file"
-                className="prj-input"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  setStartOrderFormData({ ...startOrderFormData, start_order_file: file || null });
-                }}
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              />
-              {hasStartOrder && startOrder?.start_order_file && (
-                <small style={{ color: "var(--muted)", marginTop: "4px", display: "block" }}>
-                  {t("current_file") || "الملف الحالي:"}{" "}
-                  <a 
-                    href="#" 
-                    onClick={handleFileClick(startOrder.start_order_file)}
-                    style={{ color: "var(--primary)", textDecoration: "underline" }}
-                  >
-                    {t("view_file") || "عرض الملف"}
-                  </a>
-                </small>
-              )}
-            </div>
+            <StaticContractAttachmentFile
+              label={t("start_order_file") || "ملف أمر المباشرة"}
+              value={startOrderFormData.start_order_file}
+              fileUrl={startOrderFormData.start_order_file_url}
+              fileName={startOrderFormData.start_order_file_name}
+              onChange={(file) => setStartOrderFormData({ ...startOrderFormData, start_order_file: file })}
+              onRemoveExisting={() => {
+                setStartOrderFormData({
+                  ...startOrderFormData,
+                  start_order_file_url: null,
+                  start_order_file_name: null,
+                  start_order_file: null,
+                });
+              }}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              maxSizeMB={10}
+              isView={false}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/start-order/`}
+            />
             <div>
               <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
                 {t("start_order_notes") || "ملاحظات أمر المباشرة"}
@@ -1742,13 +1912,25 @@ export default function ProjectView() {
               formData.append("start_order_file", startOrderFormData.start_order_file);
             }
             
+            let response;
             if (hasStartOrder) {
-              await api.patch(`projects/${projectId}/start-order/${startOrder.id}/`, formData, {
+              response = await api.patch(`projects/${projectId}/start-order/${startOrder.id}/`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
               });
             } else {
-              await api.post(`projects/${projectId}/start-order/`, formData, {
+              response = await api.post(`projects/${projectId}/start-order/`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
+              });
+            }
+            // ✅ تحديث URLs بعد الحفظ
+            if (response?.data?.start_order_file) {
+              const url = response.data.start_order_file;
+              const fileName = response.data.start_order_file_name || extractFileNameFromUrl(url);
+              setStartOrderFormData({
+                ...startOrderFormData,
+                start_order_file_url: url,
+                start_order_file_name: fileName,
+                start_order_file: null, // إزالة File object بعد الحفظ
               });
             }
             setStartOrderDialogOpen(false);
@@ -1762,6 +1944,178 @@ export default function ProjectView() {
           }
         }}
         busy={savingStartOrder}
+      />
+
+      {/* Dialog الجدول الزمني */}
+      <Dialog
+        open={projectScheduleDialogOpen}
+        title={projectSchedule ? (t("edit_project_schedule") || "تعديل الجدول الزمني") : (t("add_project_schedule") || "إضافة الجدول الزمني")}
+        desc={
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: "400px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
+                {t("project_start_date") || "تاريخ بداية المشروع"} *
+              </label>
+              <DateInput
+                className="prj-input"
+                value={projectScheduleFormData.project_start_date}
+                onChange={(value) => {
+                  setProjectScheduleFormData({ ...projectScheduleFormData, project_start_date: value });
+                  // ✅ حساب project_end_date تلقائياً عند تغيير project_start_date
+                  // سيتم حسابه في الـ backend، لكن يمكننا إظهار رسالة "سيتم الحساب تلقائياً"
+                }}
+              />
+            </div>
+            {projectScheduleFormData.project_end_date && (
+              <div>
+                <label style={{ display: "block", marginBottom: "8px", fontWeight: 500, color: "var(--color-text-secondary)" }}>
+                  {t("project_end_date") || "تاريخ نهاية المشروع (محسوب تلقائياً)"}
+                </label>
+                <div style={{ padding: "8px 12px", backgroundColor: "var(--color-bg-secondary)", borderRadius: "4px", color: "var(--color-text-secondary)" }}>
+                  {formatDate(projectScheduleFormData.project_end_date)}
+                </div>
+              </div>
+            )}
+            <StaticContractAttachmentFile
+              label={t("schedule_file") || "ملف الجدول الزمني"}
+              value={projectScheduleFormData.schedule_file}
+              fileUrl={projectScheduleFormData.schedule_file_url}
+              fileName={projectScheduleFormData.schedule_file_name}
+              onChange={(file) => setProjectScheduleFormData({ ...projectScheduleFormData, schedule_file: file })}
+              onRemoveExisting={() => {
+                setProjectScheduleFormData({
+                  ...projectScheduleFormData,
+                  schedule_file_url: null,
+                  schedule_file_name: null,
+                  schedule_file: null,
+                });
+              }}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              maxSizeMB={10}
+              isView={false}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/project-schedule/`}
+            />
+          </div>
+        }
+        confirmLabel={savingProjectSchedule ? t("saving") : t("save")}
+        cancelLabel={t("cancel")}
+        onClose={() => !savingProjectSchedule && setProjectScheduleDialogOpen(false)}
+        onConfirm={async () => {
+          if (!projectScheduleFormData.project_start_date) {
+            alert(t("project_start_date_required") || "يرجى إدخال تاريخ بداية المشروع");
+            return;
+          }
+          setSavingProjectSchedule(true);
+          try {
+            const formData = new FormData();
+            if (projectScheduleFormData.project_start_date) {
+              formData.append("project_start_date", projectScheduleFormData.project_start_date);
+            }
+            if (projectScheduleFormData.schedule_file) {
+              formData.append("schedule_file", projectScheduleFormData.schedule_file);
+            }
+            
+            let response;
+            if (projectSchedule) {
+              response = await api.patch(`projects/${projectId}/project-schedule/${projectSchedule.id}/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            } else {
+              response = await api.post(`projects/${projectId}/project-schedule/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            }
+            
+            if (response.status === 200 || response.status === 201) {
+              reload();
+              setProjectScheduleDialogOpen(false);
+            }
+          } catch (error) {
+            console.error("Error saving project schedule:", error);
+            alert(error.response?.data?.detail || error.message || t("error_saving") || "حدث خطأ أثناء الحفظ");
+          } finally {
+            setSavingProjectSchedule(false);
+          }
+        }}
+        busy={savingProjectSchedule}
+      />
+      
+      {/* Dialog إشعار بدء الحفر */}
+      <Dialog
+        open={excavationNoticeDialogOpen}
+        title={excavationNotice ? (t("edit_excavation_notice") || "تعديل إشعار بدء الحفر") : (t("add_excavation_notice") || "إضافة إشعار بدء الحفر")}
+        desc={
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: "400px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>
+                {t("notice_date") || "تاريخ إشعار بدء الحفر"}
+              </label>
+              <DateInput
+                className="prj-input"
+                value={excavationNoticeFormData.notice_date}
+                onChange={(value) => setExcavationNoticeFormData({ ...excavationNoticeFormData, notice_date: value })}
+              />
+            </div>
+            <StaticContractAttachmentFile
+              label={t("notice_file") || "ملف إشعار بدء الحفر"}
+              value={excavationNoticeFormData.notice_file}
+              fileUrl={excavationNoticeFormData.notice_file_url}
+              fileName={excavationNoticeFormData.notice_file_name}
+              onChange={(file) => setExcavationNoticeFormData({ ...excavationNoticeFormData, notice_file: file })}
+              onRemoveExisting={() => {
+                setExcavationNoticeFormData({
+                  ...excavationNoticeFormData,
+                  notice_file_url: null,
+                  notice_file_name: null,
+                  notice_file: null,
+                });
+              }}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              maxSizeMB={10}
+              isView={false}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/excavation-notice/`}
+            />
+          </div>
+        }
+        confirmLabel={savingExcavationNotice ? t("saving") : t("save")}
+        cancelLabel={t("cancel")}
+        onClose={() => !savingExcavationNotice && setExcavationNoticeDialogOpen(false)}
+        onConfirm={async () => {
+          setSavingExcavationNotice(true);
+          try {
+            const formData = new FormData();
+            if (excavationNoticeFormData.notice_date) {
+              formData.append("notice_date", excavationNoticeFormData.notice_date);
+            }
+            if (excavationNoticeFormData.notice_file) {
+              formData.append("notice_file", excavationNoticeFormData.notice_file);
+            }
+            
+            let response;
+            if (excavationNotice) {
+              response = await api.patch(`projects/${projectId}/excavation-notice/${excavationNotice.id}/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            } else {
+              response = await api.post(`projects/${projectId}/excavation-notice/`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            }
+            
+            if (response.status === 200 || response.status === 201) {
+              reload();
+              setExcavationNoticeDialogOpen(false);
+            }
+          } catch (error) {
+            console.error("Error saving excavation notice:", error);
+            alert(error.response?.data?.detail || error.message || t("error_saving") || "حدث خطأ أثناء الحفظ");
+          } finally {
+            setSavingExcavationNotice(false);
+          }
+        }}
+        busy={savingExcavationNotice}
       />
 
       {/* ✅ تم إزالة Dialog التمديدات - الآن التعديل مباشرة في الصفحة */}

@@ -10,6 +10,8 @@ export default function useProjectData(projectId) {
     contract: null,
     awarding: null,
     startOrder: null,
+    projectSchedule: null,
+    excavationNotice: null,
     payments: [],
     variations: [],
     invoices: [],
@@ -46,11 +48,13 @@ export default function useProjectData(projectId) {
 
     try {
       // ✅ استخدام include parameter لتقليل عدد API calls من 6 إلى 2 فقط (project + payments)
-      const [pRes, paymentsRes, variationsRes, invoicesRes] = await Promise.allSettled([
+      const [pRes, paymentsRes, variationsRes, invoicesRes, scheduleRes, excavationRes] = await Promise.allSettled([
         api.get(`projects/${projectId}/?include=siteplan,license,contract,awarding,start_order`),
         api.get(`projects/${projectId}/payments/`),
         api.get(`projects/${projectId}/variations/`),
         api.get(`projects/${projectId}/actual-invoices/`),
+        api.get(`projects/${projectId}/project-schedule/`),
+        api.get(`projects/${projectId}/excavation-notice/`),
       ]);
 
       if (!mountedRef.current) return;
@@ -63,6 +67,10 @@ export default function useProjectData(projectId) {
       const contract = project?.contract_data || null;
       const awarding = project?.awarding_data || null;
       const startOrder = project?.start_order_data || null;
+      
+      // ✅ استخراج ProjectSchedule و ExcavationStartNotice
+      const projectSchedule = extractData(scheduleRes);
+      const excavationNotice = extractData(excavationRes);
       
       // ✅ معالجة الدفعات بشكل آمن - إذا فشل الطلب، نستخدم قائمة فارغة
       let paymentsData = [];
@@ -118,7 +126,7 @@ export default function useProjectData(projectId) {
         }
       }
 
-      setData({ project, siteplan, license, contract, awarding, startOrder, payments: paymentsData, variations: variationsData, invoices: invoicesData });
+      setData({ project, siteplan, license, contract, awarding, startOrder, projectSchedule, excavationNotice, payments: paymentsData, variations: variationsData, invoices: invoicesData });
       setLoading(false);
     } catch (error) {
       if (!mountedRef.current) return;

@@ -54,6 +54,8 @@ const ViewContract = lazy(() => import("./features/projects/view/ViewContract"))
 const ViewAwarding = lazy(() => import("./features/projects/view/ViewAwarding"));
 const ViewSummary = lazy(() => import("./features/projects/view/ViewSummary"));
 const SelectProjectForStartOrder = lazy(() => import("./features/projects/pages/SelectProjectForStartOrder"));
+const SelectProjectForSchedule = lazy(() => import("./features/projects/pages/SelectProjectForSchedule"));
+const SelectProjectForExcavationNotice = lazy(() => import("./features/projects/pages/SelectProjectForExcavationNotice"));
 const SelectProjectForVariation = lazy(() => import("./features/projects/pages/SelectProjectForVariation"));
 const SelectProjectForAwarding = lazy(() => import("./features/projects/pages/SelectProjectForAwarding"));
 const SelectProjectForExtensions = lazy(() => import("./features/projects/pages/SelectProjectForExtensions"));
@@ -130,6 +132,8 @@ export default function App() {
             <Route path="/projects/pending-approvals" element={<ProtectedRoute><PendingApprovalsPage /></ProtectedRoute>} />
             <Route path="/projects/final-approvals" element={<ProtectedRoute><FinalApprovalsPage /></ProtectedRoute>} />
             <Route path="/projects/select-start-order" element={<ProtectedRoute><SelectProjectForStartOrder /></ProtectedRoute>} />
+            <Route path="/projects/select-project-schedule" element={<ProtectedRoute><SelectProjectForSchedule /></ProtectedRoute>} />
+            <Route path="/projects/select-excavation-notice" element={<ProtectedRoute><SelectProjectForExcavationNotice /></ProtectedRoute>} />
             <Route path="/projects/select-variation" element={<ProtectedRoute><SelectProjectForVariation /></ProtectedRoute>} />
             <Route path="/projects/select-awarding" element={<ProtectedRoute><SelectProjectForAwarding /></ProtectedRoute>} />
             <Route path="/projects/select-extensions" element={<ProtectedRoute><SelectProjectForExtensions /></ProtectedRoute>} />

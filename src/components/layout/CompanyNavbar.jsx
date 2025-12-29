@@ -32,7 +32,23 @@ export default function CompanyNavbar() {
 
   // Get current user from AuthContext or use default
   const currentUser = user?.email || user?.get_full_name || (isRTL ? "مستخدم" : "User");
-  const userRole = user?.role?.name || (isRTL ? "مستخدم" : "User");
+  
+  // Translate user role
+  const getUserRoleDisplay = (roleName) => {
+    if (!roleName) return isRTL ? "مستخدم" : "User";
+    
+    const roleTranslations = {
+      'company_super_admin': isRTL ? 'مدير الشركة الرئيسي' : 'Company Super Admin',
+      'Manager': isRTL ? 'مدير' : 'Manager',
+      'Admin': isRTL ? 'مدير' : 'Admin',
+      'User': isRTL ? 'مستخدم' : 'User',
+      'user': isRTL ? 'مستخدم' : 'User',
+    };
+    
+    return roleTranslations[roleName] || roleName;
+  };
+  
+  const userRole = getUserRoleDisplay(user?.role?.name);
 
   // استخدام اسم الشركة من Theme فقط (بدون اسم النظام)
   const companyName = tenantTheme?.company_name || (isRTL 

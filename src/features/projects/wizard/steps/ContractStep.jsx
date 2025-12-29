@@ -149,6 +149,16 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     }
   }, [form.total_project_value, form.total_bank_value, setF]);
 
+  // ✅ حساب تكلفة المتر المربع تلقائيًا
+  const costPerSquareMeter = useMemo(() => {
+    const total = num(form.total_project_value, 0);
+    const area = num(form.total_floor_area, 0);
+    if (area > 0 && total > 0) {
+      return total / area;
+    }
+    return null;
+  }, [form.total_project_value, form.total_floor_area]);
+
   // تحميل URLs الملفات والمرفقات
   useEffect(() => {
     if (!projectId) return;
@@ -437,6 +447,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       total_bank_value: isHousing ? bank : 0,
       total_owner_value: isHousing ? owner : total,
       project_duration_months: num(form.project_duration_months, 0),
+      total_floor_area: num(form.total_floor_area, null),
       owner_includes_consultant: toBool(form.owner_includes_consultant),
       owner_fee_design_percent: num(form.owner_fee_design_percent, 0),
       owner_fee_supervision_percent: num(form.owner_fee_supervision_percent, 0),
@@ -555,20 +566,41 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
     if (form.price_offer_file && form.price_offer_file instanceof File) {
       fd.append("price_offer_file", form.price_offer_file);
     }
-    // ✅ إضافة المخططات التعاقدية (المقسمة)
-    if (form.mep_drawings_file && form.mep_drawings_file instanceof File) {
-      fd.append("mep_drawings_file", form.mep_drawings_file);
-    }
+    // ✅ إضافة المخططات التعاقدية (جميع الأنواع)
     if (form.architectural_drawings_file && form.architectural_drawings_file instanceof File) {
       fd.append("architectural_drawings_file", form.architectural_drawings_file);
     }
     if (form.structural_drawings_file && form.structural_drawings_file instanceof File) {
       fd.append("structural_drawings_file", form.structural_drawings_file);
     }
+    if (form.ac_drawings_file && form.ac_drawings_file instanceof File) {
+      fd.append("ac_drawings_file", form.ac_drawings_file);
+    }
+    if (form.electrical_drawings_file && form.electrical_drawings_file instanceof File) {
+      fd.append("electrical_drawings_file", form.electrical_drawings_file);
+    }
+    if (form.water_supply_drawings_file && form.water_supply_drawings_file instanceof File) {
+      fd.append("water_supply_drawings_file", form.water_supply_drawings_file);
+    }
+    if (form.drainage_drawings_file && form.drainage_drawings_file instanceof File) {
+      fd.append("drainage_drawings_file", form.drainage_drawings_file);
+    }
+    if (form.telecommunication_drawings_file && form.telecommunication_drawings_file instanceof File) {
+      fd.append("telecommunication_drawings_file", form.telecommunication_drawings_file);
+    }
+    if (form.fire_fighting_drawings_file && form.fire_fighting_drawings_file instanceof File) {
+      fd.append("fire_fighting_drawings_file", form.fire_fighting_drawings_file);
+    }
+    if (form.cctv_drawings_file && form.cctv_drawings_file instanceof File) {
+      fd.append("cctv_drawings_file", form.cctv_drawings_file);
+    }
+    // ⚠️ الحقول القديمة - للتوافق فقط
+    if (form.mep_drawings_file && form.mep_drawings_file instanceof File) {
+      fd.append("mep_drawings_file", form.mep_drawings_file);
+    }
     if (form.decoration_drawings_file && form.decoration_drawings_file instanceof File) {
       fd.append("decoration_drawings_file", form.decoration_drawings_file);
     }
-    // ⚠️ الحقل القديم - للتوافق فقط
     if (form.contractual_drawings_file && form.contractual_drawings_file instanceof File) {
       fd.append("contractual_drawings_file", form.contractual_drawings_file);
     }
@@ -605,9 +637,16 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         (form.quantities_table_file && form.quantities_table_file instanceof File) ||
         (form.approved_materials_table_file && form.approved_materials_table_file instanceof File) ||
         (form.price_offer_file && form.price_offer_file instanceof File) ||
-        (form.mep_drawings_file && form.mep_drawings_file instanceof File) ||
         (form.architectural_drawings_file && form.architectural_drawings_file instanceof File) ||
         (form.structural_drawings_file && form.structural_drawings_file instanceof File) ||
+        (form.ac_drawings_file && form.ac_drawings_file instanceof File) ||
+        (form.electrical_drawings_file && form.electrical_drawings_file instanceof File) ||
+        (form.water_supply_drawings_file && form.water_supply_drawings_file instanceof File) ||
+        (form.drainage_drawings_file && form.drainage_drawings_file instanceof File) ||
+        (form.telecommunication_drawings_file && form.telecommunication_drawings_file instanceof File) ||
+        (form.fire_fighting_drawings_file && form.fire_fighting_drawings_file instanceof File) ||
+        (form.cctv_drawings_file && form.cctv_drawings_file instanceof File) ||
+        (form.mep_drawings_file && form.mep_drawings_file instanceof File) ||
         (form.decoration_drawings_file && form.decoration_drawings_file instanceof File) ||
         (form.general_specifications_file && form.general_specifications_file instanceof File);
       
@@ -666,13 +705,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("price_offer_file_url", url);
             setF("price_offer_file_name", fileName);
           }
-          // ✅ تحديث المخططات التعاقدية (المقسمة) بعد الحفظ
-          if (contractData.mep_drawings_file) {
-            const url = contractData.mep_drawings_file;
-            const fileName = contractData.mep_drawings_file_name || extractFileNameFromUrl(url);
-            setF("mep_drawings_file_url", url);
-            setF("mep_drawings_file_name", fileName);
-          }
+          // ✅ تحديث المخططات التعاقدية (جميع الأنواع) بعد الحفظ
           if (contractData.architectural_drawings_file) {
             const url = contractData.architectural_drawings_file;
             const fileName = contractData.architectural_drawings_file_name || extractFileNameFromUrl(url);
@@ -684,6 +717,55 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             const fileName = contractData.structural_drawings_file_name || extractFileNameFromUrl(url);
             setF("structural_drawings_file_url", url);
             setF("structural_drawings_file_name", fileName);
+          }
+          if (contractData.ac_drawings_file) {
+            const url = contractData.ac_drawings_file;
+            const fileName = contractData.ac_drawings_file_name || extractFileNameFromUrl(url);
+            setF("ac_drawings_file_url", url);
+            setF("ac_drawings_file_name", fileName);
+          }
+          if (contractData.electrical_drawings_file) {
+            const url = contractData.electrical_drawings_file;
+            const fileName = contractData.electrical_drawings_file_name || extractFileNameFromUrl(url);
+            setF("electrical_drawings_file_url", url);
+            setF("electrical_drawings_file_name", fileName);
+          }
+          if (contractData.water_supply_drawings_file) {
+            const url = contractData.water_supply_drawings_file;
+            const fileName = contractData.water_supply_drawings_file_name || extractFileNameFromUrl(url);
+            setF("water_supply_drawings_file_url", url);
+            setF("water_supply_drawings_file_name", fileName);
+          }
+          if (contractData.drainage_drawings_file) {
+            const url = contractData.drainage_drawings_file;
+            const fileName = contractData.drainage_drawings_file_name || extractFileNameFromUrl(url);
+            setF("drainage_drawings_file_url", url);
+            setF("drainage_drawings_file_name", fileName);
+          }
+          if (contractData.telecommunication_drawings_file) {
+            const url = contractData.telecommunication_drawings_file;
+            const fileName = contractData.telecommunication_drawings_file_name || extractFileNameFromUrl(url);
+            setF("telecommunication_drawings_file_url", url);
+            setF("telecommunication_drawings_file_name", fileName);
+          }
+          if (contractData.fire_fighting_drawings_file) {
+            const url = contractData.fire_fighting_drawings_file;
+            const fileName = contractData.fire_fighting_drawings_file_name || extractFileNameFromUrl(url);
+            setF("fire_fighting_drawings_file_url", url);
+            setF("fire_fighting_drawings_file_name", fileName);
+          }
+          if (contractData.cctv_drawings_file) {
+            const url = contractData.cctv_drawings_file;
+            const fileName = contractData.cctv_drawings_file_name || extractFileNameFromUrl(url);
+            setF("cctv_drawings_file_url", url);
+            setF("cctv_drawings_file_name", fileName);
+          }
+          // ⚠️ الحقول القديمة - للتوافق
+          if (contractData.mep_drawings_file) {
+            const url = contractData.mep_drawings_file;
+            const fileName = contractData.mep_drawings_file_name || extractFileNameFromUrl(url);
+            setF("mep_drawings_file_url", url);
+            setF("mep_drawings_file_name", fileName);
           }
           if (contractData.decoration_drawings_file) {
             const url = contractData.decoration_drawings_file;
@@ -705,6 +787,40 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
             setF("general_specifications_file_name", fileName);
           }
           
+          // ✅ تحديث attachments بعد الحفظ
+          if (contractData.attachments && Array.isArray(contractData.attachments) && contractData.attachments.length > 0) {
+            // ✅ تصفية attachments لإزالة أي مرفقات من نوع "main_contract" 
+            const loadedAttachments = contractData.attachments
+              .filter(att => {
+                // ✅ إزالة مرفقات من نوع "main_contract" لأنها تظهر في قسم العقد الأصيل
+                if (att && att.type === "main_contract") {
+                  return false;
+                }
+                return true;
+              })
+              .map(att => ({
+                type: att.type || "appendix",
+                date: att.date || "",
+                notes: att.notes || "",
+                price: att.price ?? "",
+                file: null, // لا نحمل File object
+                file_url: att.file_url || null,
+                file_name: att.file_name || (att.file_url ? extractFileNameFromUrl(att.file_url) : null),
+              }));
+            if (process.env.NODE_ENV === "development") {
+              console.log("✅ Updated attachments after save:", loadedAttachments);
+              console.log("✅ Attachments with file_url:", loadedAttachments.map(att => ({ 
+                type: att.type, 
+                has_file_url: !!att.file_url, 
+                file_url: att.file_url,
+                file_name: att.file_name 
+              })));
+            }
+            setF("attachments", loadedAttachments);
+          } else {
+            setF("attachments", []);
+          }
+          
           // ✅ تم إزالة تحديث التمديدات - التمديدات الآن في StartOrder
         }
       } catch (e) {
@@ -719,10 +835,18 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       if (form.quantities_table_file instanceof File) setF("quantities_table_file", null);
       if (form.approved_materials_table_file instanceof File) setF("approved_materials_table_file", null);
       if (form.price_offer_file instanceof File) setF("price_offer_file", null);
-      // ✅ إزالة File objects للمخططات التعاقدية (المقسمة)
-      if (form.mep_drawings_file instanceof File) setF("mep_drawings_file", null);
+      // ✅ إزالة File objects للمخططات التعاقدية (جميع الأنواع)
       if (form.architectural_drawings_file instanceof File) setF("architectural_drawings_file", null);
       if (form.structural_drawings_file instanceof File) setF("structural_drawings_file", null);
+      if (form.ac_drawings_file instanceof File) setF("ac_drawings_file", null);
+      if (form.electrical_drawings_file instanceof File) setF("electrical_drawings_file", null);
+      if (form.water_supply_drawings_file instanceof File) setF("water_supply_drawings_file", null);
+      if (form.drainage_drawings_file instanceof File) setF("drainage_drawings_file", null);
+      if (form.telecommunication_drawings_file instanceof File) setF("telecommunication_drawings_file", null);
+      if (form.fire_fighting_drawings_file instanceof File) setF("fire_fighting_drawings_file", null);
+      if (form.cctv_drawings_file instanceof File) setF("cctv_drawings_file", null);
+      // ⚠️ الحقول القديمة - للتوافق
+      if (form.mep_drawings_file instanceof File) setF("mep_drawings_file", null);
       if (form.decoration_drawings_file instanceof File) setF("decoration_drawings_file", null);
       if (form.general_specifications_file instanceof File) setF("general_specifications_file", null);
       
@@ -734,21 +858,9 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
       // عند الحفظ وانتقال للخطوة التالية، نضع في وضع view
       updateViewMode(true);
       
-      if (!isHousing) {
-        // التمويل الخاص - انتهاء، ننتقل للصفحة الرئيسية
-        navigate("/projects");
-        return;
-      }
-      
-      // القرض السكني - الانتقال للخطوة التالية (أمر الترسية)
-      // ✅ دائماً ننتقل للخطوة التالية إذا كان onNext متاحاً
-      if (onNext && typeof onNext === "function") {
-        onNext();
-        return;
-      }
-      
-      // ✅ إذا لم يكن onNext متاحاً، نبقى في وضع العرض بعد الحفظ
-      // (updateViewMode(true) تم استدعاؤه بالفعل أعلاه)
+      // ✅ دائماً ننتقل للصفحة الرئيسية بعد إنهاء مرحلة العقد
+      navigate("/projects");
+      return;
     } catch (err) {
       // محاولة استخدام formatServerErrors أولاً
       const serverData = err?.response?.data;
@@ -766,8 +878,8 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
 
   const isHousing = form.contract_classification === "housing_loan_program";
   const isPrivateFunding = form.contract_classification === "private_funding";
-  // ✅ كل المشاريع تعرض "إنهاء" عند العقد بغض النظر عن نوع التصنيف
-  const finishLabel = t("finish");
+  // ✅ دائماً نعرض "إنهاء" في مرحلة العقد
+  const finishLabel = t("finish") || "إنهاء";
 
   return (
     <WizardShell title={t("contract.title")}>
@@ -965,6 +1077,27 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
               </>
             )}
             <ViewRow label={t("contract.fields.project_duration_months")} value={form.project_duration_months} />
+            {form.total_floor_area && (
+              <Field label={t("contract.fields.total_floor_area")}>
+                <div>
+                  <div className="font-mono fw-600">
+                    {num(form.total_floor_area, 0).toLocaleString()} {t("contract.labels.square_meters") || "م²"}
+                  </div>
+                </div>
+              </Field>
+            )}
+            {costPerSquareMeter !== null && (
+              <Field label={t("contract.fields.cost_per_square_meter")}>
+                <div>
+                  <div className="font-mono fw-600">
+                    {formatMoney(costPerSquareMeter)}
+                  </div>
+                  <div className="mini mt-8">
+                    {t("contract.labels.per_square_meter") || "لكل متر مربع"}
+                  </div>
+                </div>
+              </Field>
+            )}
           </div>
         ) : (
           <div className={`form-grid ${isPrivateFunding ? "cols-2" : "cols-4"}`} style={{ gap: "var(--space-4)" }}>
@@ -1009,6 +1142,42 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
           </Field>
           </div>
         )}
+        
+        {/* ✅ حقل المساحة الطابقية وتكلفة المتر المربع */}
+        <div className={`form-grid ${isPrivateFunding ? "cols-2" : "cols-2"}`} style={{ gap: "var(--space-4)", marginTop: "var(--space-4)" }}>
+          <Field label={t("contract.fields.total_floor_area")}>
+            {viewMode ? (
+              <div>
+                {form.total_floor_area ? (
+                  <div className="font-mono fw-600">
+                    {num(form.total_floor_area, 0).toLocaleString()} {t("contract.labels.square_meters") || "م²"}
+                  </div>
+                ) : (
+                  <div>{t("empty_value")}</div>
+                )}
+              </div>
+            ) : (
+              <NumberField
+                value={form.total_floor_area}
+                onChange={(v) => setF("total_floor_area", v)}
+                placeholder={t("contract.placeholders.total_floor_area") || "أدخل المساحة بالمتر المربع"}
+              />
+            )}
+          </Field>
+          
+          {costPerSquareMeter !== null && (
+            <Field label={t("contract.fields.cost_per_square_meter")}>
+              <div>
+                <div className="font-mono fw-600">
+                  {formatMoney(costPerSquareMeter)}
+                </div>
+                <div className="mini mt-8">
+                  {t("contract.labels.per_square_meter") || "لكل متر مربع"}
+                </div>
+              </div>
+            </Field>
+          )}
+        </div>
       </div>
 
       {/* 4) أطراف العقد */}
@@ -1335,8 +1504,30 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         {/* ✅ المرفقات الثابتة */}
         <div style={{ marginBottom: "var(--space-6)" }}>
           <div className="form-grid cols-2" style={{ gap: "var(--space-4)" }}>
+            {/* 1) العقد الأصيل */}
             <StaticContractAttachmentFile
-              label="1) جدول الكميات"
+              label="1) العقد الأصيل - Original Contract"
+              value={form.contract_file}
+              fileUrl={form.contract_file_url}
+              fileName={form.contract_file_name}
+              onChange={(file) => setF("contract_file", file)}
+              onRemoveExisting={() => {
+                setF("contract_file_url", null);
+                setF("contract_file_name", null);
+                setF("contract_file", null);
+              }}
+              accept=".pdf"
+              maxSizeMB={10}
+              isView={viewMode}
+              projectId={projectId}
+              endpoint={`projects/${projectId}/contract/`}
+            />
+            
+            {/* 4) عقد البنك - سيتم عرضه في المرفقات الديناميكية */}
+            
+            {/* 2) جدول الكميات */}
+            <StaticContractAttachmentFile
+              label="2) جدول الكميات - BOQ"
               value={form.quantities_table_file}
               fileUrl={form.quantities_table_file_url}
               fileName={form.quantities_table_file_name}
@@ -1353,8 +1544,9 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
               endpoint={`projects/${projectId}/contract/`}
             />
             
+            {/* 3) جدول المواد المعتمدة */}
             <StaticContractAttachmentFile
-              label="2) جدول المواد المعتمدة"
+              label="3) جدول المواد المعتمدة - Materials Table"
               value={form.approved_materials_table_file}
               fileUrl={form.approved_materials_table_file_url}
               fileName={form.approved_materials_table_file_name}
@@ -1370,115 +1562,176 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
               projectId={projectId}
               endpoint={`projects/${projectId}/contract/`}
             />
-            
-            <StaticContractAttachmentFile
-              label="3) عرض السعر"
-              value={form.price_offer_file}
-              fileUrl={form.price_offer_file_url}
-              fileName={form.price_offer_file_name}
-              onChange={(file) => setF("price_offer_file", file)}
-              onRemoveExisting={() => {
-                setF("price_offer_file_url", null);
-                setF("price_offer_file_name", null);
-                setF("price_offer_file", null);
-              }}
-              accept=".pdf,.xlsx,.xls"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
-            
-            {/* ✅ المخططات التعاقدية (مقسمة إلى 4 أنواع) */}
-            <StaticContractAttachmentFile
-              label="4-أ) مخططات MEP"
-              value={form.mep_drawings_file}
-              fileUrl={form.mep_drawings_file_url}
-              fileName={form.mep_drawings_file_name}
-              onChange={(file) => setF("mep_drawings_file", file)}
-              onRemoveExisting={() => {
-                setF("mep_drawings_file_url", null);
-                setF("mep_drawings_file_name", null);
-                setF("mep_drawings_file", null);
-              }}
-              accept=".pdf,.dwg,.dxf"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
-            
-            <StaticContractAttachmentFile
-              label="4-ب) المخططات المعمارية"
-              value={form.architectural_drawings_file}
-              fileUrl={form.architectural_drawings_file_url}
-              fileName={form.architectural_drawings_file_name}
-              onChange={(file) => setF("architectural_drawings_file", file)}
-              onRemoveExisting={() => {
-                setF("architectural_drawings_file_url", null);
-                setF("architectural_drawings_file_name", null);
-                setF("architectural_drawings_file", null);
-              }}
-              accept=".pdf,.dwg,.dxf"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
-            
-            <StaticContractAttachmentFile
-              label="4-ج) المخططات الإنشائية"
-              value={form.structural_drawings_file}
-              fileUrl={form.structural_drawings_file_url}
-              fileName={form.structural_drawings_file_name}
-              onChange={(file) => setF("structural_drawings_file", file)}
-              onRemoveExisting={() => {
-                setF("structural_drawings_file_url", null);
-                setF("structural_drawings_file_name", null);
-                setF("structural_drawings_file", null);
-              }}
-              accept=".pdf,.dwg,.dxf"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
-            
-            <StaticContractAttachmentFile
-              label="4-د) مخططات الديكور"
-              value={form.decoration_drawings_file}
-              fileUrl={form.decoration_drawings_file_url}
-              fileName={form.decoration_drawings_file_name}
-              onChange={(file) => setF("decoration_drawings_file", file)}
-              onRemoveExisting={() => {
-                setF("decoration_drawings_file_url", null);
-                setF("decoration_drawings_file_name", null);
-                setF("decoration_drawings_file", null);
-              }}
-              accept=".pdf,.dwg,.dxf"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
-            
-            <StaticContractAttachmentFile
-              label="5) المواصفات العامة والخاصة"
-              value={form.general_specifications_file}
-              fileUrl={form.general_specifications_file_url}
-              fileName={form.general_specifications_file_name}
-              onChange={(file) => setF("general_specifications_file", file)}
-              onRemoveExisting={() => {
-                setF("general_specifications_file_url", null);
-                setF("general_specifications_file_name", null);
-                setF("general_specifications_file", null);
-              }}
-              accept=".pdf,.doc,.docx"
-              maxSizeMB={10}
-              isView={viewMode}
-              projectId={projectId}
-              endpoint={`projects/${projectId}/contract/`}
-            />
+          </div>
+          
+          {/* 📁 مخططات العقد – Contract Drawings */}
+          <div style={{ marginTop: "var(--space-6)", paddingTop: "var(--space-6)", borderTop: "2px solid var(--border)" }}>
+            <h5 style={{ marginBottom: "var(--space-4)", fontSize: "18px", fontWeight: "600" }}>
+              4) مخططات العقد – Contract Drawings
+            </h5>
+            <div className="form-grid cols-2" style={{ gap: "var(--space-4)" }}>
+              <StaticContractAttachmentFile
+                label="1) المخططات المعمارية - Architectural Drawings"
+                value={form.architectural_drawings_file}
+                fileUrl={form.architectural_drawings_file_url}
+                fileName={form.architectural_drawings_file_name}
+                onChange={(file) => setF("architectural_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("architectural_drawings_file_url", null);
+                  setF("architectural_drawings_file_name", null);
+                  setF("architectural_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="2) المخططات الإنشائية - Structural Drawings"
+                value={form.structural_drawings_file}
+                fileUrl={form.structural_drawings_file_url}
+                fileName={form.structural_drawings_file_name}
+                onChange={(file) => setF("structural_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("structural_drawings_file_url", null);
+                  setF("structural_drawings_file_name", null);
+                  setF("structural_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="3) مخططات التكييف - AC Drawings"
+                value={form.ac_drawings_file}
+                fileUrl={form.ac_drawings_file_url}
+                fileName={form.ac_drawings_file_name}
+                onChange={(file) => setF("ac_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("ac_drawings_file_url", null);
+                  setF("ac_drawings_file_name", null);
+                  setF("ac_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="4) مخططات الكهرباء - Electrical Drawings"
+                value={form.electrical_drawings_file}
+                fileUrl={form.electrical_drawings_file_url}
+                fileName={form.electrical_drawings_file_name}
+                onChange={(file) => setF("electrical_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("electrical_drawings_file_url", null);
+                  setF("electrical_drawings_file_name", null);
+                  setF("electrical_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="5) مخططات إمداد المياه - Water Supply Drawings"
+                value={form.water_supply_drawings_file}
+                fileUrl={form.water_supply_drawings_file_url}
+                fileName={form.water_supply_drawings_file_name}
+                onChange={(file) => setF("water_supply_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("water_supply_drawings_file_url", null);
+                  setF("water_supply_drawings_file_name", null);
+                  setF("water_supply_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="6) مخططات الصرف الصحي - Drainage Drawings"
+                value={form.drainage_drawings_file}
+                fileUrl={form.drainage_drawings_file_url}
+                fileName={form.drainage_drawings_file_name}
+                onChange={(file) => setF("drainage_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("drainage_drawings_file_url", null);
+                  setF("drainage_drawings_file_name", null);
+                  setF("drainage_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="7) مخططات الاتصالات - Telecommunication Drawings"
+                value={form.telecommunication_drawings_file}
+                fileUrl={form.telecommunication_drawings_file_url}
+                fileName={form.telecommunication_drawings_file_name}
+                onChange={(file) => setF("telecommunication_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("telecommunication_drawings_file_url", null);
+                  setF("telecommunication_drawings_file_name", null);
+                  setF("telecommunication_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="8) مخططات مكافحة الحرائق - Fire Fighting Drawings"
+                value={form.fire_fighting_drawings_file}
+                fileUrl={form.fire_fighting_drawings_file_url}
+                fileName={form.fire_fighting_drawings_file_name}
+                onChange={(file) => setF("fire_fighting_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("fire_fighting_drawings_file_url", null);
+                  setF("fire_fighting_drawings_file_name", null);
+                  setF("fire_fighting_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+              
+              <StaticContractAttachmentFile
+                label="9) مخططات كاميرات المراقبة - CCTV Drawings"
+                value={form.cctv_drawings_file}
+                fileUrl={form.cctv_drawings_file_url}
+                fileName={form.cctv_drawings_file_name}
+                onChange={(file) => setF("cctv_drawings_file", file)}
+                onRemoveExisting={() => {
+                  setF("cctv_drawings_file_url", null);
+                  setF("cctv_drawings_file_name", null);
+                  setF("cctv_drawings_file", null);
+                }}
+                accept=".pdf,.dwg,.dxf"
+                maxSizeMB={10}
+                isView={viewMode}
+                projectId={projectId}
+                endpoint={`projects/${projectId}/contract/`}
+              />
+            </div>
           </div>
         </div>
         
@@ -1633,7 +1886,7 @@ export default function ContractStep({ projectId, onPrev, onNext, isView: isView
         <StepActions
           onPrev={onPrev}
           onNext={save}
-          nextLabel={hasNextStep ? finishLabel : t("save")}
+          nextLabel={finishLabel}
           nextClassName="primary"
         />
       )}

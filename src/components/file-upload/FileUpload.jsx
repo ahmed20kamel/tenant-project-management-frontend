@@ -61,17 +61,44 @@ export default function FileUpload({
         return;
       }
 
-      // السماح فقط بملفات PDF
-      const isPdf =
-        file.type === 'application/pdf' ||
-        (file.name && file.name.toLowerCase().endsWith('.pdf'));
-      if (!isPdf) {
-        setError('يُسمح برفع ملفات PDF فقط');
+      // ✅ التحقق من نوع الملف بناءً على accept الممرر
+      const acceptValue = accept || "application/pdf";
+      let isValidFile = false;
+      
+      // إذا كان accept يحتوي على application/pdf أو .pdf
+      if (acceptValue.includes('application/pdf') || acceptValue.includes('.pdf')) {
+        if (file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'))) {
+          isValidFile = true;
+        }
+      }
+      
+      // التحقق من الامتدادات الأخرى (مثل .dwg, .dxf)
+      if (!isValidFile) {
+        const allowedExtensions = acceptValue.split(',').map(ext => {
+          const clean = ext.trim().toLowerCase();
+          // إزالة application/ أو . من البداية
+          if (clean.startsWith('application/')) {
+            return clean.replace('application/', '');
+          }
+          return clean.replace('.', '');
+        });
+        
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        isValidFile = allowedExtensions.includes(fileExtension || '');
+      }
+      
+      if (!isValidFile) {
+        const allowedTypes = acceptValue.split(',').map(ext => {
+          const clean = ext.trim().toUpperCase();
+          if (clean.includes('APPLICATION/')) return 'PDF';
+          return clean.replace('.', '');
+        }).join(', ');
+        setError(`يُسمح برفع ملفات من نوع: ${allowedTypes} فقط`);
         setIsProcessing(false);
         return;
       }
 
-      // لا يوجد ضغط أو معالجة للصور لأننا نسمح بـ PDF فقط
+      // ✅ الملف صالح - إرساله
       onChange(file);
       setError('');
     } catch (err) {
@@ -80,9 +107,10 @@ export default function FileUpload({
     } finally {
       setIsProcessing(false);
     }
-  }, [compressionOptions, maxSizeMB, onChange, t]);
+  }, [compressionOptions, maxSizeMB, onChange, t, accept]);
 
-  const effectiveAccept = "application/pdf";
+  // ✅ استخدام accept الممرر أو القيمة الافتراضية
+  const effectiveAccept = accept || "application/pdf";
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -396,7 +424,10 @@ export default function FileUpload({
 
       {/* معلومات إضافية */}
       <div className="file-upload-hint">
-        {`يُسمح بملفات PDF فقط - الحد الأقصى للحجم: ${maxSizeMB}MB`}
+        {accept ? 
+          `يُسمح بملفات: ${accept.toUpperCase()} - الحد الأقصى للحجم: ${maxSizeMB}MB` :
+          `يُسمح بملفات PDF فقط - الحد الأقصى للحجم: ${maxSizeMB}MB`
+        }
       </div>
     </div>
   );

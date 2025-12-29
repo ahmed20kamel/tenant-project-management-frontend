@@ -114,7 +114,9 @@ export default function OnboardingWizardPage() {
         profileData.append('username', formData.username.trim());
       }
       if (formData.phone && formData.phone.trim()) {
-        profileData.append('phone', formData.phone.trim());
+        // ✅ تنظيف رقم الهاتف من المسافات (Backend يتطلب تنسيق بدون مسافات)
+        const cleanedPhone = formData.phone.trim().replace(/\s+/g, '');
+        profileData.append('phone', cleanedPhone);
       }
       if (formData.avatar) {
         profileData.append('avatar', formData.avatar);
@@ -148,7 +150,9 @@ export default function OnboardingWizardPage() {
       
       // company_phone مطلوب في Backend
       if (formData.company_phone && formData.company_phone.trim()) {
-        settingsData.append('company_phone', formData.company_phone.trim());
+        // ✅ تنظيف رقم الهاتف من المسافات (Backend يتطلب تنسيق بدون مسافات)
+        const cleanedPhone = formData.company_phone.trim().replace(/\s+/g, '');
+        settingsData.append('company_phone', cleanedPhone);
       } else {
         throw new Error(isRTL ? 'رقم هاتف الشركة مطلوب' : 'Company phone is required');
       }
@@ -184,7 +188,9 @@ export default function OnboardingWizardPage() {
         settingsData.append('contractor_license_no', formData.contractor_license_no.trim());
       }
       if (formData.contractor_phone && formData.contractor_phone.trim()) {
-        settingsData.append('contractor_phone', formData.contractor_phone.trim());
+        // ✅ تنظيف رقم الهاتف من المسافات (Backend يتطلب تنسيق بدون مسافات)
+        const cleanedPhone = formData.contractor_phone.trim().replace(/\s+/g, '');
+        settingsData.append('contractor_phone', cleanedPhone);
       }
       if (formData.contractor_email && formData.contractor_email.trim()) {
         settingsData.append('contractor_email', formData.contractor_email.trim());
@@ -201,6 +207,14 @@ export default function OnboardingWizardPage() {
       settingsData.append('primary_color', formData.primary_color || '#f97316');
       settingsData.append('secondary_color', formData.secondary_color || '#ea580c');
       
+      // ✅ Logging للتحقق من البيانات المرسلة
+      console.log('Sending tenant settings:', {
+        company_name: formData.company_name_ar,
+        company_phone: formData.company_phone,
+        primary_color: formData.primary_color || '#f97316',
+        secondary_color: formData.secondary_color || '#ea580c'
+      });
+      
       // ✅ إرسال إعدادات الشركة
       await api.patch('auth/tenant-settings/current/', settingsData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -213,11 +227,14 @@ export default function OnboardingWizardPage() {
       navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Onboarding error:', err);
+      console.error('Error response:', err.response?.data);
       // ✅ عرض رسالة الخطأ بشكل أفضل
       let errorMsg = isRTL ? 'حدث خطأ أثناء حفظ الإعدادات' : 'Error saving settings';
       
       if (err.response?.data) {
         const errorData = err.response.data;
+        console.error('Error data:', errorData);
+        
         if (typeof errorData === 'string') {
           errorMsg = errorData;
         } else if (errorData.error) {
@@ -227,14 +244,31 @@ export default function OnboardingWizardPage() {
         } else if (errorData.detail) {
           errorMsg = errorData.detail;
         } else {
-          // عرض أول خطأ من القائمة
-          const firstError = Object.values(errorData)[0];
-          if (Array.isArray(firstError)) {
-            errorMsg = firstError[0];
-          } else if (typeof firstError === 'string') {
-            errorMsg = firstError;
+          // ✅ عرض جميع الأخطاء من القائمة
+          const errors = [];
+          for (const [key, value] of Object.entries(errorData)) {
+            if (Array.isArray(value)) {
+              errors.push(`${key}: ${value[0]}`);
+            } else if (typeof value === 'string') {
+              errors.push(`${key}: ${value}`);
+            } else if (typeof value === 'object') {
+              errors.push(`${key}: ${JSON.stringify(value)}`);
+            }
+          }
+          if (errors.length > 0) {
+            errorMsg = errors.join(', ');
+          } else {
+            // عرض أول خطأ من القائمة
+            const firstError = Object.values(errorData)[0];
+            if (Array.isArray(firstError)) {
+              errorMsg = firstError[0];
+            } else if (typeof firstError === 'string') {
+              errorMsg = firstError;
+            }
           }
         }
+      } else if (err.message) {
+        errorMsg = err.message;
       }
       
       setError(errorMsg);
